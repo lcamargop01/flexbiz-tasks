@@ -506,11 +506,16 @@ function renderProjectsPage() {
     '<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">' +
     S.projects.map(p => {
       const pct = p.task_count > 0 ? Math.round((p.done_count / p.task_count) * 100) : 0;
-      return '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="S.filters.project_id=&apos;'+p.id+'&apos;;navigate(&apos;tasks&apos;)">' +
-        '<div class="flex items-center gap-3 mb-3"><div class="w-3 h-3 rounded-full" style="background:'+esc(p.color||'#6366f1')+'"></div><h3 class="font-bold text-gray-800">'+esc(p.name)+'</h3><span class="ml-auto status-badge '+statusColor(p.status === 'active' ? 'in_progress' : p.status === 'completed' ? 'done' : 'todo')+'">'+esc(p.status)+'</span></div>' +
+      return '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">' +
+        '<div class="flex items-center gap-3 mb-3"><div class="w-3 h-3 rounded-full" style="background:'+esc(p.color||'#6366f1')+'"></div><h3 class="font-bold text-gray-800 flex-1 cursor-pointer" onclick="S.filters.project_id=&apos;'+p.id+'&apos;;navigate(&apos;tasks&apos;)">'+esc(p.name)+'</h3><span class="status-badge '+statusColor(p.status === 'active' ? 'in_progress' : p.status === 'completed' ? 'done' : 'todo')+'">'+esc(p.status)+'</span></div>' +
         (p.client_name ? '<div class="text-sm text-gray-500 mb-3"><i class="fas fa-building mr-1"></i>'+esc(p.client_name)+'</div>' : '') +
         (p.description ? '<p class="text-sm text-gray-600 mb-3 line-clamp-2">'+esc(p.description)+'</p>' : '') +
-        '<div class="flex items-center gap-4"><div class="flex-1"><div class="bg-gray-200 rounded-full h-2"><div class="bg-indigo-500 rounded-full h-2 transition-all" style="width:'+pct+'%"></div></div></div><span class="text-xs text-gray-500 font-medium">'+p.done_count+'/'+p.task_count+' tasks</span></div></div>';
+        '<div class="flex items-center gap-4 mb-3"><div class="flex-1"><div class="bg-gray-200 rounded-full h-2"><div class="bg-indigo-500 rounded-full h-2 transition-all" style="width:'+pct+'%"></div></div></div><span class="text-xs text-gray-500 font-medium">'+p.done_count+'/'+p.task_count+' tasks</span></div>' +
+        '<div class="flex items-center gap-2 pt-2 border-t border-gray-100">' +
+        '<button onclick="S.filters.project_id=&apos;'+p.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button>' +
+        '<button onclick="event.stopPropagation();showProjectForm(S.projects.find(x=>x.id==='+p.id+'))" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button>' +
+        '<button onclick="event.stopPropagation();deleteProject('+p.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button>' +
+        '</div></div>';
     }).join('') +
     (S.projects.length === 0 ? '<div class="col-span-full bg-white rounded-xl border p-12 text-center"><i class="fas fa-project-diagram text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">No projects yet</p></div>' : '') +
     '</div>';
@@ -518,18 +523,21 @@ function renderProjectsPage() {
 
 function showProjectForm(project = null) {
   const title = project ? 'Edit Project' : 'New Project';
+  const btnText = project ? 'Save Changes' : 'Create Project';
   const html = '<div class="fixed inset-0 z-50 modal-overlay flex items-center justify-center px-4" onclick="if(event.target===this)this.remove()"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-md fade-in"><div class="px-6 py-4 border-b"><h3 class="font-bold">'+title+'</h3></div><form class="p-6 space-y-4" onsubmit="event.preventDefault();saveProject('+(project?project.id:'null')+',this)">' +
     '<input type="text" name="name" value="'+esc(project?.name||'')+'" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Project name">' +
     '<textarea name="description" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Description">'+esc(project?.description||'')+'</textarea>' +
     '<select name="client_id" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">No client</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(project?.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select>' +
-    '<input type="color" name="color" value="'+(project?.color||'#6366f1')+'" class="w-12 h-10 border rounded cursor-pointer">' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Save</button></div></form></div></div>';
+    (project ? '<select name="status" class="w-full text-sm border rounded-lg px-3 py-2"><option value="active"'+(project.status==='active'?' selected':'')+'>Active</option><option value="on_hold"'+(project.status==='on_hold'?' selected':'')+'>On Hold</option><option value="completed"'+(project.status==='completed'?' selected':'')+'>Completed</option><option value="cancelled"'+(project.status==='cancelled'?' selected':'')+'>Cancelled</option></select>' : '') +
+    '<div class="flex items-center gap-3"><label class="text-sm text-gray-600">Color:</label><input type="color" name="color" value="'+(project?.color||'#6366f1')+'" class="w-12 h-10 border rounded cursor-pointer"></div>' +
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">'+btnText+'</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
 async function saveProject(id, form) {
   const fd = new FormData(form);
   const data = { name: fd.get('name'), description: fd.get('description'), client_id: fd.get('client_id') || null, color: fd.get('color') };
+  if (fd.get('status')) data.status = fd.get('status');
   if (id) await API.put('/api/projects/' + id, data); else await API.post('/api/projects', data);
   form.closest('.modal-overlay').remove();
   await loadProjects(); render();
@@ -546,7 +554,7 @@ function renderClientsPage() {
       '<div class="flex items-center gap-4 text-xs"><span class="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">'+cl.project_count+' projects</span><span class="bg-amber-50 text-amber-700 px-2 py-1 rounded-full">'+cl.open_task_count+' open tasks</span>' +
       '<span class="ml-auto '+(cl.portal_access?'text-green-500':'text-gray-400')+'" title="Portal access"><i class="fas fa-'+(cl.portal_access?'check-circle':'times-circle')+'"></i></span>' +
       '</div>' +
-      '<div class="mt-3 flex gap-2"><button onclick="S.filters.client_id=&apos;'+cl.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button><button onclick="showClientForm('+cl.id+')" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button></div></div>'
+      '<div class="mt-3 flex gap-2 pt-2 border-t border-gray-100"><button onclick="S.filters.client_id=&apos;'+cl.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button><button onclick="showClientForm('+cl.id+')" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button><button onclick="deleteClient('+cl.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button></div></div>'
     ).join('') +
     (S.clients.length === 0 ? '<div class="col-span-full bg-white rounded-xl border p-12 text-center"><i class="fas fa-building text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">No clients yet</p></div>' : '') +
     '</div>';
@@ -583,27 +591,54 @@ function renderTeamPage() {
       '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">' +
       '<div class="flex items-center gap-3 mb-3">'+avatar(u.name, 'w-12 h-12 text-lg')+'<div><h3 class="font-bold text-gray-800">'+esc(u.name)+'</h3><div class="text-sm text-gray-500">'+esc(u.email)+'</div></div></div>' +
       '<div class="flex items-center gap-2 mb-3"><span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full capitalize">'+esc(u.role)+'</span>'+(u.department?'<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">'+esc(u.department)+'</span>':'')+'</div>' +
-      '<div class="flex items-center gap-4 text-sm"><span class="text-gray-600"><i class="fas fa-tasks text-gray-400 mr-1"></i>'+u.open_tasks+' open tasks</span>' +
-      '<button onclick="S.filters.assigned_to=&apos;'+u.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-indigo-600 hover:text-indigo-800 ml-auto text-xs"><i class="fas fa-eye mr-1"></i>View Tasks</button></div></div>'
+      '<div class="flex items-center gap-4 text-sm"><span class="text-gray-600"><i class="fas fa-tasks text-gray-400 mr-1"></i>'+u.open_tasks+' open tasks</span></div>' +
+      '<div class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">' +
+      '<button onclick="S.filters.assigned_to=&apos;'+u.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-eye mr-1"></i>View Tasks</button>' +
+      '<button onclick="showUserForm(S.users.find(x=>x.id==='+u.id+'))" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button>' +
+      '<button onclick="deleteUser('+u.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button>' +
+      '</div></div>'
     ).join('') + '</div>';
 }
 
-function showUserForm() {
-  const html = '<div class="fixed inset-0 z-50 modal-overlay flex items-center justify-center px-4" onclick="if(event.target===this)this.remove()"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-md fade-in"><div class="px-6 py-4 border-b"><h3 class="font-bold">Add Team Member</h3></div><form class="p-6 space-y-3" onsubmit="event.preventDefault();saveUser(this)">' +
-    '<input type="text" name="name" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Full name">' +
-    '<input type="email" name="email" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Email">' +
-    '<select name="role" class="w-full text-sm border rounded-lg px-3 py-2"><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option></select>' +
-    '<input type="text" name="department" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Department">' +
-    '<input type="text" name="password" value="changeme123" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Password">' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Add Member</button></div></form></div></div>';
+function showUserForm(user = null) {
+  const title = user ? 'Edit Team Member' : 'Add Team Member';
+  const btnText = user ? 'Save Changes' : 'Add Member';
+  const html = '<div class="fixed inset-0 z-50 modal-overlay flex items-center justify-center px-4" onclick="if(event.target===this)this.remove()"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-md fade-in"><div class="px-6 py-4 border-b"><h3 class="font-bold">'+title+'</h3></div><form class="p-6 space-y-3" onsubmit="event.preventDefault();saveUser('+(user?user.id:'null')+',this)">' +
+    '<input type="text" name="name" value="'+esc(user?.name||'')+'" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Full name">' +
+    '<input type="email" name="email" value="'+esc(user?.email||'')+'" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Email">' +
+    '<select name="role" class="w-full text-sm border rounded-lg px-3 py-2"><option value="employee"'+(user?.role==='employee'?' selected':'')+'>Employee</option><option value="manager"'+(user?.role==='manager'?' selected':'')+'>Manager</option><option value="admin"'+(user?.role==='admin'?' selected':'')+'>Admin</option></select>' +
+    '<input type="text" name="department" value="'+esc(user?.department||'')+'" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Department">' +
+    '<input type="tel" name="phone" value="'+esc(user?.phone||'')+'" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Phone">' +
+    '<input type="text" name="password" value="'+(user?'':'changeme123')+'" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="'+(user?'New password (leave blank to keep)':'Password')+'">' +
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">'+btnText+'</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
-async function saveUser(form) {
+async function saveUser(id, form) {
   const fd = new FormData(form);
-  await API.post('/api/users', { name: fd.get('name'), email: fd.get('email'), role: fd.get('role'), department: fd.get('department'), password: fd.get('password') });
+  const data = { name: fd.get('name'), email: fd.get('email'), role: fd.get('role'), department: fd.get('department'), phone: fd.get('phone') };
+  if (fd.get('password')) data.password = fd.get('password');
+  if (id) await API.put('/api/users/' + id, data); else await API.post('/api/users', data);
   form.closest('.modal-overlay').remove();
   await loadUsers(); render();
+}
+
+async function deleteUser(id) {
+  if (!confirm('Delete this team member? Their task assignments will also be removed.')) return;
+  await API.del('/api/users/' + id);
+  await loadUsers(); render();
+}
+
+async function deleteClient(id) {
+  if (!confirm('Delete this client? Tasks and projects will be unlinked from this client.')) return;
+  await API.del('/api/clients/' + id);
+  await loadClients(); render();
+}
+
+async function deleteProject(id) {
+  if (!confirm('Delete this project? Tasks will remain but be unlinked from this project.')) return;
+  await API.del('/api/projects/' + id);
+  await loadProjects(); render();
 }
 
 // ==================== PROCESSES PAGE ====================
@@ -612,7 +647,7 @@ function renderProcessesPage() {
     '<div class="grid md:grid-cols-2 gap-4">' +
     S.processes.map(p =>
       '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">' +
-      '<div class="flex items-center justify-between mb-3"><h3 class="font-bold text-gray-800"><i class="fas fa-sitemap text-indigo-500 mr-2"></i>'+esc(p.name)+'</h3><div class="flex gap-2"><button onclick="applyProcess('+p.id+')" class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-200"><i class="fas fa-play mr-1"></i>Apply</button><button onclick="deleteProcess('+p.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash"></i></button></div></div>' +
+      '<div class="flex items-center justify-between mb-3"><h3 class="font-bold text-gray-800"><i class="fas fa-sitemap text-indigo-500 mr-2"></i>'+esc(p.name)+'</h3><div class="flex gap-2"><button onclick="applyProcess('+p.id+')" class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-200"><i class="fas fa-play mr-1"></i>Apply</button><button onclick="showProcessForm(S.processes.find(x=>x.id==='+p.id+'))" class="text-xs text-gray-400 hover:text-gray-700"><i class="fas fa-edit"></i></button><button onclick="deleteProcess('+p.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash"></i></button></div></div>' +
       (p.description ? '<p class="text-sm text-gray-600 mb-3">'+esc(p.description)+'</p>' : '') +
       '<div class="space-y-2">'+(p.steps||[]).map((s,i) => '<div class="flex items-center gap-3"><div class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold">'+(i+1)+'</div><div class="text-sm"><span class="font-medium">'+esc(s.title)+'</span>'+(s.description?'<span class="text-gray-400 ml-1">- '+esc(s.description)+'</span>':'')+'</div></div>').join('')+'</div></div>'
     ).join('') +
@@ -620,23 +655,29 @@ function renderProcessesPage() {
     '</div>';
 }
 
-function showProcessForm() {
-  const html = '<div class="fixed inset-0 z-50 modal-overlay flex items-center justify-center px-4" onclick="if(event.target===this)this.remove()"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg fade-in max-h-[80vh] overflow-y-auto"><div class="px-6 py-4 border-b sticky top-0 bg-white z-10"><h3 class="font-bold">New Process Template</h3></div><form class="p-6 space-y-4" onsubmit="event.preventDefault();saveProcess(this)">' +
-    '<input type="text" name="name" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Process name">' +
-    '<textarea name="description" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Description"></textarea>' +
+function showProcessForm(process = null) {
+  const title = process ? 'Edit Process Template' : 'New Process Template';
+  const btnText = process ? 'Save Changes' : 'Create';
+  const html = '<div class="fixed inset-0 z-50 modal-overlay flex items-center justify-center px-4" onclick="if(event.target===this)this.remove()"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg fade-in max-h-[80vh] overflow-y-auto"><div class="px-6 py-4 border-b sticky top-0 bg-white z-10"><h3 class="font-bold">'+title+'</h3></div><form class="p-6 space-y-4" onsubmit="event.preventDefault();saveProcess('+(process?process.id:'null')+',this)">' +
+    '<input type="text" name="name" value="'+esc(process?.name||'')+'" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Process name">' +
+    '<textarea name="description" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Description">'+esc(process?.description||'')+'</textarea>' +
     '<div><label class="text-sm font-medium mb-2 block">Steps</label><div id="processSteps" class="space-y-2"></div><button type="button" onclick="addProcessStep()" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800"><i class="fas fa-plus mr-1"></i>Add Step</button></div>' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create</button></div></form></div></div>';
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">'+btnText+'</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
-  addProcessStep();
+  if (process && process.steps && process.steps.length > 0) {
+    process.steps.forEach(function(s) { addProcessStep(s.title, s.description); });
+  } else {
+    addProcessStep();
+  }
 }
 
-function addProcessStep() {
+function addProcessStep(title, desc) {
   const container = document.getElementById('processSteps');
   const idx = container.children.length + 1;
-  container.insertAdjacentHTML('beforeend', '<div class="flex gap-2 items-start"><span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold mt-2 flex-shrink-0">'+idx+'</span><div class="flex-1"><input type="text" name="step_title_'+idx+'" required class="w-full border rounded-lg px-3 py-2 text-sm mb-1" placeholder="Step title"><input type="text" name="step_desc_'+idx+'" class="w-full border rounded-lg px-3 py-1.5 text-xs" placeholder="Description (optional)"></div></div>');
+  container.insertAdjacentHTML('beforeend', '<div class="flex gap-2 items-start"><span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold mt-2 flex-shrink-0">'+idx+'</span><div class="flex-1"><input type="text" name="step_title_'+idx+'" value="'+esc(title||'')+'" required class="w-full border rounded-lg px-3 py-2 text-sm mb-1" placeholder="Step title"><input type="text" name="step_desc_'+idx+'" value="'+esc(desc||'')+'" class="w-full border rounded-lg px-3 py-1.5 text-xs" placeholder="Description (optional)"></div><button type="button" onclick="this.parentElement.remove()" class="text-gray-400 hover:text-red-500 mt-2 flex-shrink-0"><i class="fas fa-times"></i></button></div>');
 }
 
-async function saveProcess(form) {
+async function saveProcess(id, form) {
   const fd = new FormData(form);
   const steps = [];
   let i = 1;
@@ -644,7 +685,8 @@ async function saveProcess(form) {
     steps.push({ step: i, title: fd.get('step_title_' + i), description: fd.get('step_desc_' + i) || '' });
     i++;
   }
-  await API.post('/api/processes', { name: fd.get('name'), description: fd.get('description'), steps });
+  const data = { name: fd.get('name'), description: fd.get('description'), steps };
+  if (id) await API.put('/api/processes/' + id, data); else await API.post('/api/processes', data);
   form.closest('.modal-overlay').remove();
   await loadProcesses(); render();
 }

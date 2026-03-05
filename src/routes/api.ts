@@ -505,6 +505,16 @@ apiRoutes.put('/clients/:id', async (c) => {
   return c.json({ success: true })
 })
 
+apiRoutes.delete('/clients/:id', async (c) => {
+  if (c.get('userRole') !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const id = parseInt(c.req.param('id'))
+  // Remove client references from tasks and projects
+  await c.env.DB.prepare('UPDATE tasks SET client_id = NULL WHERE client_id = ?').bind(id).run()
+  await c.env.DB.prepare('UPDATE projects SET client_id = NULL WHERE client_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM clients WHERE id = ?').bind(id).run()
+  return c.json({ success: true })
+})
+
 // ==================== USERS / TEAM ====================
 
 apiRoutes.get('/users', async (c) => {
@@ -547,6 +557,18 @@ apiRoutes.put('/users/:id', async (c) => {
   fields.push('updated_at = datetime("now")')
 
   await c.env.DB.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run()
+  return c.json({ success: true })
+})
+
+apiRoutes.delete('/users/:id', async (c) => {
+  if (c.get('userRole') !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const id = parseInt(c.req.param('id'))
+  // Don't allow deleting yourself
+  if (id === c.get('entityId')) return c.json({ error: 'Cannot delete your own account' }, 400)
+  // Remove assignments and deactivate instead of hard delete to preserve history
+  await c.env.DB.prepare('DELETE FROM task_assignments WHERE user_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
 
