@@ -109,7 +109,7 @@
 ### Employee Accounts
 | Email | Password | Role |
 |-------|----------|------|
-| admin@flexbiz.com | admin123 | Admin |
+| info@flexbizsolutionsllc.com | admin123 | Admin |
 | sarah@flexbiz.com | password123 | Manager |
 | mike@flexbiz.com | password123 | Employee |
 | lisa@flexbiz.com | password123 | Employee |

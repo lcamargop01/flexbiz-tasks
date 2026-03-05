@@ -2,7 +2,7 @@
 
 -- Admin user (password: admin123)
 INSERT OR IGNORE INTO users (email, name, role, department, password_hash) VALUES
-  ('admin@flexbiz.com', 'Admin User', 'admin', 'Management', 'admin123'),
+  ('info@flexbizsolutionsllc.com', 'Admin User', 'admin', 'Management', 'admin123'),
   ('sarah@flexbiz.com', 'Sarah Johnson', 'manager', 'Project Management', 'password123'),
   ('mike@flexbiz.com', 'Mike Chen', 'employee', 'Development', 'password123'),
   ('lisa@flexbiz.com', 'Lisa Park', 'employee', 'Design', 'password123'),
