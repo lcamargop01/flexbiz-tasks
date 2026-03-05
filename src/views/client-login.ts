@@ -64,6 +64,8 @@ export function renderClientLogin(): string {
         if (data.error) { errEl.textContent = data.error; errEl.classList.remove('hidden'); return; }
         localStorage.setItem('flexbiz_client_token', data.token);
         localStorage.setItem('flexbiz_client', JSON.stringify(data.client));
+        localStorage.setItem('flexbiz_linked_companies', JSON.stringify(data.linked_companies || []));
+        localStorage.setItem('flexbiz_all_client_ids', JSON.stringify(data.all_client_ids || [data.client.id]));
         window.location.href = '/client/portal';
       } catch (err) { errEl.textContent = 'Connection error'; errEl.classList.remove('hidden'); }
     });

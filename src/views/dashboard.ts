@@ -556,7 +556,7 @@ function renderClientsPage() {
       '<div class="flex items-center gap-4 text-xs"><span class="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">'+cl.project_count+' projects</span><span class="bg-amber-50 text-amber-700 px-2 py-1 rounded-full">'+cl.open_task_count+' open tasks</span>' +
       '<span class="ml-auto '+(cl.portal_access?'text-green-500':'text-gray-400')+'" title="Portal access"><i class="fas fa-'+(cl.portal_access?'check-circle':'times-circle')+'"></i></span>' +
       '</div>' +
-      '<div class="mt-3 flex gap-2 pt-2 border-t border-gray-100"><button onclick="S.filters.client_id=&apos;'+cl.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button><button onclick="showClientForm('+cl.id+')" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button><button onclick="deleteClient('+cl.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button></div></div>'
+      '<div class="mt-3 flex gap-2 pt-2 border-t border-gray-100"><button onclick="S.filters.client_id=&apos;'+cl.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button><button onclick="showLinkedCompanies('+cl.id+')" class="text-xs text-purple-600 hover:text-purple-800"><i class="fas fa-link mr-1"></i>Link</button><button onclick="showClientForm('+cl.id+')" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button><button onclick="deleteClient('+cl.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button></div></div>'
     ).join('') +
     (S.clients.length === 0 ? '<div class="col-span-full bg-white rounded-xl border p-12 text-center"><i class="fas fa-building text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">No clients yet</p></div>' : '') +
     '</div>';
@@ -635,6 +635,66 @@ async function deleteClient(id) {
   if (!confirm('Delete this client? Tasks and projects will be unlinked from this client.')) return;
   await API.del('/api/clients/' + id);
   await loadClients(); render();
+}
+
+// ==================== LINKED COMPANIES ====================
+async function showLinkedCompanies(clientId) {
+  const cl = S.clients.find(c => c.id === clientId);
+  if (!cl) return;
+  // Fetch current links
+  const data = await API.get('/api/clients/' + clientId + '/linked');
+  const linked = data?.linked || [];
+  const otherClients = S.clients.filter(c => c.id !== clientId && !linked.find(l => l.linked_client_id === c.id));
+
+  let html = '<div class="fixed inset-0 z-50 modal-overlay flex items-center justify-center px-4" onclick="if(event.target===this)this.remove()" id="linkedModal">' +
+    '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md fade-in">' +
+    '<div class="px-6 py-4 border-b"><h3 class="font-bold"><i class="fas fa-link text-purple-500 mr-2"></i>Linked Companies for ' + esc(cl.company_name) + '</h3>' +
+    '<p class="text-xs text-gray-500 mt-1">When ' + esc(cl.contact_name) + ' logs in, they will see tasks from all linked companies.</p></div>' +
+    '<div class="p-6">';
+
+  // Current links
+  if (linked.length > 0) {
+    html += '<div class="mb-4"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Currently Linked</label><div class="space-y-2">';
+    for (const l of linked) {
+      html += '<div class="flex items-center justify-between bg-purple-50 rounded-lg px-3 py-2">' +
+        '<div class="flex items-center gap-2"><i class="fas fa-building text-purple-400"></i><span class="text-sm font-medium">' + esc(l.company_name) + '</span><span class="text-xs text-gray-400">' + esc(l.email) + '</span></div>' +
+        '<button onclick="unlinkCompany(' + clientId + ',' + l.link_id + ')" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-times"></i> Remove</button></div>';
+    }
+    html += '</div></div>';
+  } else {
+    html += '<div class="mb-4 p-4 bg-gray-50 rounded-lg text-center text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i>No linked companies yet</div>';
+  }
+
+  // Add new link
+  if (otherClients.length > 0) {
+    html += '<div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Add Company</label>' +
+      '<div class="flex gap-2"><select id="linkClientSelect" class="flex-1 text-sm border rounded-lg px-3 py-2"><option value="">Select a company...</option>' +
+      otherClients.map(c => '<option value="' + c.id + '">' + esc(c.company_name) + ' (' + esc(c.contact_name) + ')</option>').join('') +
+      '</select><button onclick="linkCompany(' + clientId + ')" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700"><i class="fas fa-plus mr-1"></i>Link</button></div></div>';
+  }
+
+  html += '<div class="flex justify-end mt-4"><button onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Close</button></div>' +
+    '</div></div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function linkCompany(primaryId) {
+  const sel = document.getElementById('linkClientSelect');
+  if (!sel || !sel.value) return;
+  await API.post('/api/clients/' + primaryId + '/linked', { linked_client_id: parseInt(sel.value) });
+  // Refresh the modal
+  const modal = document.getElementById('linkedModal');
+  if (modal) modal.remove();
+  await showLinkedCompanies(primaryId);
+}
+
+async function unlinkCompany(primaryId, linkId) {
+  if (!confirm('Remove this linked company?')) return;
+  await API.del('/api/clients/' + primaryId + '/linked/' + linkId);
+  const modal = document.getElementById('linkedModal');
+  if (modal) modal.remove();
+  await showLinkedCompanies(primaryId);
 }
 
 async function deleteProject(id) {

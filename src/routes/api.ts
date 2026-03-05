@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 type Bindings = { DB: D1Database }
-type Variables = { userId: number; userRole: string; userType: string; entityId: number }
+type Variables = { userId: number; userRole: string; userType: string; entityId: number; clientIds: number[] }
 
 export const apiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -18,6 +18,7 @@ apiRoutes.use('*', async (c, next) => {
       c.set('userRole', 'admin')
       c.set('userType', 'user')
       c.set('entityId', integration.user_id as number)
+      c.set('clientIds', [])
       return next()
     }
   }
@@ -39,11 +40,19 @@ apiRoutes.use('*', async (c, next) => {
     c.set('userRole', user.role as string)
     c.set('userType', 'user')
     c.set('entityId', user.id as number)
+    c.set('clientIds', [])
   } else {
-    c.set('userId', session.client_id as number)
+    const clientId = session.client_id as number
+    c.set('userId', clientId)
     c.set('userRole', 'client')
     c.set('userType', 'client')
-    c.set('entityId', session.client_id as number)
+    c.set('entityId', clientId)
+    // Resolve linked client IDs (self + linked companies)
+    const linked = await c.env.DB.prepare(
+      'SELECT linked_client_id FROM linked_clients WHERE primary_client_id = ?'
+    ).bind(clientId).all()
+    const allIds = [clientId, ...linked.results.map((r: any) => r.linked_client_id as number)]
+    c.set('clientIds', allIds)
   }
   return next()
 })
@@ -56,10 +65,12 @@ apiRoutes.get('/tasks', async (c) => {
   let where: string[] = []
   let params: any[] = []
 
-  // Clients can only see their own tasks that are visible
+  // Clients can only see tasks for their companies (including linked) that are visible
   if (c.get('userType') === 'client') {
-    where.push('t.client_id = ?')
-    params.push(c.get('entityId'))
+    const cIds = c.get('clientIds') || [c.get('entityId')]
+    const ph = cIds.map(() => '?').join(',')
+    where.push(`t.client_id IN (${ph})`)
+    params.push(...cIds)
     where.push('t.is_visible_to_client = 1')
   }
 
@@ -147,9 +158,12 @@ apiRoutes.get('/tasks/:id', async (c) => {
 
   if (!task) return c.json({ error: 'Task not found' }, 404)
 
-  // Client access check
-  if (c.get('userType') === 'client' && (task.client_id !== c.get('entityId') || !task.is_visible_to_client)) {
-    return c.json({ error: 'Access denied' }, 403)
+  // Client access check (including linked companies)
+  if (c.get('userType') === 'client') {
+    const cIds = c.get('clientIds') || [c.get('entityId')]
+    if (!cIds.includes(task.client_id as number) || !task.is_visible_to_client) {
+      return c.json({ error: 'Access denied' }, 403)
+    }
   }
 
   const [assignments, comments, attachments, subtasks, activity] = await Promise.all([
@@ -241,9 +255,12 @@ apiRoutes.put('/tasks/:id', async (c) => {
   const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first()
   if (!task) return c.json({ error: 'Task not found' }, 404)
 
-  // Client can only update their own tasks
-  if (c.get('userType') === 'client' && task.client_id !== c.get('entityId')) {
-    return c.json({ error: 'Access denied' }, 403)
+  // Client can only update their own tasks (including linked companies)
+  if (c.get('userType') === 'client') {
+    const cIds = c.get('clientIds') || [c.get('entityId')]
+    if (!cIds.includes(task.client_id as number)) {
+      return c.json({ error: 'Access denied' }, 403)
+    }
   }
 
   const fields: string[] = []
@@ -412,8 +429,10 @@ apiRoutes.get('/projects', async (c) => {
   let params: any[] = []
 
   if (c.get('userType') === 'client') {
-    where.push('p.client_id = ?')
-    params.push(c.get('entityId'))
+    const cIds = c.get('clientIds') || [c.get('entityId')]
+    const ph = cIds.map(() => '?').join(',')
+    where.push(`p.client_id IN (${ph})`)
+    params.push(...cIds)
   }
   if (client_id) { where.push('p.client_id = ?'); params.push(parseInt(client_id)) }
   if (status) { where.push('p.status = ?'); params.push(status) }
@@ -522,10 +541,51 @@ apiRoutes.delete('/clients/:id', async (c) => {
   // Remove client references from tasks and projects
   await c.env.DB.prepare('UPDATE tasks SET client_id = NULL WHERE client_id = ?').bind(id).run()
   await c.env.DB.prepare('UPDATE projects SET client_id = NULL WHERE client_id = ?').bind(id).run()
-  // Clean up sessions and notifications
+  // Clean up sessions, notifications, and linked_clients
   await c.env.DB.prepare('DELETE FROM sessions WHERE client_id = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM notifications WHERE recipient_id = ? AND recipient_type = ?').bind(id, 'client').run()
+  await c.env.DB.prepare('DELETE FROM linked_clients WHERE primary_client_id = ? OR linked_client_id = ?').bind(id, id).run()
   await c.env.DB.prepare('DELETE FROM clients WHERE id = ?').bind(id).run()
+  return c.json({ success: true })
+})
+
+// ==================== LINKED CLIENTS (Multi-Company) ====================
+
+// Get linked companies for a client
+apiRoutes.get('/clients/:id/linked', async (c) => {
+  if (c.get('userRole') !== 'admin' && c.get('userType') !== 'client') return c.json({ error: 'Access denied' }, 403)
+  const id = parseInt(c.req.param('id'))
+  const linked = await c.env.DB.prepare(`
+    SELECT lc.id as link_id, lc.linked_client_id, c.company_name, c.contact_name, c.email
+    FROM linked_clients lc
+    JOIN clients c ON lc.linked_client_id = c.id
+    WHERE lc.primary_client_id = ?
+    ORDER BY c.company_name
+  `).bind(id).all()
+  return c.json({ linked: linked.results })
+})
+
+// Link a company to a client login
+apiRoutes.post('/clients/:id/linked', async (c) => {
+  if (c.get('userRole') !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const primaryId = parseInt(c.req.param('id'))
+  const { linked_client_id } = await c.req.json()
+  if (primaryId === linked_client_id) return c.json({ error: 'Cannot link a client to itself' }, 400)
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO linked_clients (primary_client_id, linked_client_id) VALUES (?, ?)'
+    ).bind(primaryId, linked_client_id).run()
+    return c.json({ success: true }, 201)
+  } catch (e) {
+    return c.json({ error: 'Link already exists' }, 409)
+  }
+})
+
+// Remove a linked company
+apiRoutes.delete('/clients/:id/linked/:linkId', async (c) => {
+  if (c.get('userRole') !== 'admin') return c.json({ error: 'Admin only' }, 403)
+  const linkId = parseInt(c.req.param('linkId'))
+  await c.env.DB.prepare('DELETE FROM linked_clients WHERE id = ?').bind(linkId).run()
   return c.json({ success: true })
 })
 
@@ -729,12 +789,13 @@ apiRoutes.post('/email-integration/generate-key', async (c) => {
 
 apiRoutes.get('/dashboard', async (c) => {
   if (c.get('userType') === 'client') {
-    const clientId = c.get('entityId')
+    const cIds = c.get('clientIds') || [c.get('entityId')]
+    const ph = cIds.map(() => '?').join(',')
     const [tasksByStatus, tasksByPriority, recentTasks, overdueTasks] = await Promise.all([
-      c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE client_id = ? AND is_visible_to_client = 1 GROUP BY status').bind(clientId).all(),
-      c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE client_id = ? AND is_visible_to_client = 1 AND status NOT IN ("done","cancelled") GROUP BY priority').bind(clientId).all(),
-      c.env.DB.prepare('SELECT id, title, status, priority, due_date FROM tasks WHERE client_id = ? AND is_visible_to_client = 1 ORDER BY updated_at DESC LIMIT 10').bind(clientId).all(),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE client_id = ? AND is_visible_to_client = 1 AND due_date < datetime("now") AND status NOT IN ("done","cancelled")').bind(clientId).first(),
+      c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 GROUP BY status`).bind(...cIds).all(),
+      c.env.DB.prepare(`SELECT priority, COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 AND status NOT IN ("done","cancelled") GROUP BY priority`).bind(...cIds).all(),
+      c.env.DB.prepare(`SELECT t.id, t.title, t.status, t.priority, t.due_date, cl.company_name as client_name FROM tasks t LEFT JOIN clients cl ON t.client_id = cl.id WHERE t.client_id IN (${ph}) AND t.is_visible_to_client = 1 ORDER BY t.updated_at DESC LIMIT 10`).bind(...cIds).all(),
+      c.env.DB.prepare(`SELECT COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 AND due_date < datetime("now") AND status NOT IN ("done","cancelled")`).bind(...cIds).first(),
     ])
     return c.json({ tasksByStatus: tasksByStatus.results, tasksByPriority: tasksByPriority.results, recentTasks: recentTasks.results, overdueTasks: overdueTasks?.count || 0 })
   }

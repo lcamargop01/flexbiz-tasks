@@ -14,6 +14,29 @@ function generateToken(): string {
   return token
 }
 
+// Helper: get all client IDs this client can see (self + linked)
+async function getLinkedClientIds(db: D1Database, clientId: number): Promise<number[]> {
+  const ids = [clientId]
+  const linked = await db.prepare(
+    'SELECT linked_client_id FROM linked_clients WHERE primary_client_id = ?'
+  ).bind(clientId).all()
+  for (const row of linked.results) {
+    ids.push(row.linked_client_id as number)
+  }
+  return ids
+}
+
+// Helper: get all companies info for a client (self + linked)
+async function getLinkedCompanies(db: D1Database, clientId: number): Promise<any[]> {
+  const linkedIds = await getLinkedClientIds(db, clientId)
+  if (linkedIds.length <= 1) return []
+  const placeholders = linkedIds.map(() => '?').join(',')
+  const companies = await db.prepare(
+    `SELECT id, company_name, contact_name, email FROM clients WHERE id IN (${placeholders})`
+  ).bind(...linkedIds).all()
+  return companies.results
+}
+
 // Employee login
 authRoutes.post('/login', async (c) => {
   const { email, password } = await c.req.json()
@@ -53,7 +76,11 @@ authRoutes.post('/client/login', async (c) => {
     'INSERT INTO sessions (token, client_id, user_type, expires_at) VALUES (?, ?, ?, ?)'
   ).bind(token, client.id, 'client', expires).run()
 
-  return c.json({ token, client })
+  // Fetch linked companies
+  const linkedCompanies = await getLinkedCompanies(c.env.DB, client.id as number)
+  const allClientIds = await getLinkedClientIds(c.env.DB, client.id as number)
+
+  return c.json({ token, client, linked_companies: linkedCompanies, all_client_ids: allClientIds })
 })
 
 // Verify session
@@ -81,7 +108,9 @@ authRoutes.get('/me', async (c) => {
     const client = await c.env.DB.prepare(
       'SELECT id, company_name, contact_name, email, phone, logo_url FROM clients WHERE id = ?'
     ).bind(session.client_id).first()
-    return c.json({ type: 'client', client })
+    const linkedCompanies = await getLinkedCompanies(c.env.DB, session.client_id as number)
+    const allClientIds = await getLinkedClientIds(c.env.DB, session.client_id as number)
+    return c.json({ type: 'client', client, linked_companies: linkedCompanies, all_client_ids: allClientIds })
   }
 })
 
