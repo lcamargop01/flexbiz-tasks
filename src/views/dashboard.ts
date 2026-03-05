@@ -392,10 +392,12 @@ function renderTaskModal() {
     // Description
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Description</label><textarea class="w-full border border-gray-200 rounded-lg p-3 text-sm min-h-[80px] focus:ring-2 focus:ring-indigo-200" onchange="updateTaskField('+t.id+',&apos;description&apos;,this.value)">'+esc(t.description||'')+'</textarea></div>' +
     // Meta grid
-    '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">' +
+    '<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Status</label><select onchange="updateTaskField('+t.id+',&apos;status&apos;,this.value);S.selectedTask.status=this.value;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(t.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Priority</label><select onchange="updateTaskField('+t.id+',&apos;priority&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="urgent"'+(t.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(t.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(t.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(t.priority==='low'?' selected':'')+'>Low</option></select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Due Date</label><input type="datetime-local" value="'+(t.due_date?t.due_date.slice(0,16):'')+'" onchange="updateTaskField('+t.id+',&apos;due_date&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><select onchange="updateTaskField('+t.id+',&apos;client_id&apos;,this.value||null);S.selectedTask.client_id=this.value?parseInt(this.value):null;S.selectedTask.client_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(t.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Project</label><select onchange="updateTaskField('+t.id+',&apos;project_id&apos;,this.value||null);S.selectedTask.project_id=this.value?parseInt(this.value):null;S.selectedTask.project_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(t.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Est. Hours</label><input type="number" value="'+(t.estimated_hours||'')+'" onchange="updateTaskField('+t.id+',&apos;estimated_hours&apos;,parseFloat(this.value))" class="w-full text-sm border rounded-lg px-3 py-2" step="0.5"></div></div>' +
     // Assignees
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Assignees</label><div class="flex flex-wrap gap-2">' +
@@ -421,7 +423,7 @@ function renderTaskModal() {
 
 async function updateTaskField(id, field, value) {
   await API.put('/api/tasks/' + id, { [field]: value });
-  if (field === 'status' || field === 'priority') { await loadTasks(); }
+  if (field === 'status' || field === 'priority' || field === 'client_id' || field === 'project_id') { await loadTasks(); }
 }
 
 async function addAssignee(taskId, userId) {
