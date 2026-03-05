@@ -744,14 +744,26 @@ apiRoutes.get('/dashboard', async (c) => {
     c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL GROUP BY priority').all(),
     c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")').first(),
     c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")').first(),
+    // For admin: show all open tasks. For others: show only assigned tasks.
+    c.get('userRole') === 'admin' ?
     c.env.DB.prepare(`
-      SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name
+      SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
+        (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN clients cl ON t.client_id = cl.id
-      WHERE t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) AND t.status NOT IN ('done','cancelled')
-      ORDER BY t.due_date ASC NULLS LAST LIMIT 10
-    `).bind(c.get('entityId')).all(),
+      WHERE t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled')
+      ORDER BY t.due_date ASC NULLS LAST LIMIT 15
+    `).all() :
+    c.env.DB.prepare(`
+      SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
+        (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+      FROM tasks t
+      LEFT JOIN projects p ON t.project_id = p.id
+      LEFT JOIN clients cl ON t.client_id = cl.id
+      WHERE (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.status NOT IN ('done','cancelled')
+      ORDER BY t.due_date ASC NULLS LAST LIMIT 15
+    `).bind(c.get('entityId'), c.get('entityId')).all(),
     c.env.DB.prepare(`
       SELECT al.*, t.title as task_title,
         CASE WHEN al.actor_type = 'user' THEN u.name WHEN al.actor_type = 'client' THEN cl.contact_name ELSE 'System' END as actor_name

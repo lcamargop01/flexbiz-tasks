@@ -248,12 +248,12 @@ function renderDashboardPage() {
     statCard('Completed', statusCounts['done'] || 0, 'fas fa-check-circle', 'bg-green-500', 'text-green-600') +
     '</div>' +
     '<div class="grid md:grid-cols-2 gap-6">' +
-    // My tasks
-    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-user-check text-indigo-500"></i>My Tasks</h3>' +
-    '<div class="space-y-2">' + ((d.myTasks || []).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No open tasks assigned to you</p>' :
+    // My tasks (admin sees all, others see assigned)
+    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-'+(S.user?.role==='admin'?'tasks':'user-check')+' text-indigo-500"></i>'+(S.user?.role==='admin'?'All Open Tasks':'My Tasks')+'</h3>' +
+    '<div class="space-y-2">' + ((d.myTasks || []).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No open tasks</p>' :
     (d.myTasks || []).map(t => '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
       priorityIcon(t.priority) +
-      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div><div class="text-xs text-gray-400">'+esc(t.project_name || '')+(t.client_name ? ' - '+esc(t.client_name) : '')+'</div></div>' +
+      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div><div class="text-xs text-gray-400">'+(t.assignee_names ? '<i class="fas fa-user text-gray-300 mr-1"></i>'+esc(t.assignee_names) : '<span class="text-gray-300">Unassigned</span>')+(t.project_name ? ' &middot; '+esc(t.project_name) : '')+(t.client_name ? ' &middot; '+esc(t.client_name) : '')+'</div></div>' +
       '<div>'+dueLabel(t.due_date)+'</div>' +
       '<span class="status-badge '+statusColor(t.status)+'">'+esc(t.status)+'</span></div>').join('')) +
     '</div></div>' +
