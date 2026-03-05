@@ -10,7 +10,7 @@ export function renderDashboard(): string {
   <script>tailwind.config={theme:{extend:{colors:{primary:'#6366f1',sidebar:'#1e1b4b'}}}}</script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    * { scrollbar-width: thin; scrollbar-color: #c7d2fe #f1f5f9; }
+    * { scrollbar-width: thin; scrollbar-color: #c7d2fe #f1f5f9; -webkit-tap-highlight-color: transparent; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 3px; }
@@ -35,9 +35,31 @@ export function renderDashboard(): string {
     .tag-chip { font-size: 10px; padding: 1px 6px; border-radius: 4px; }
     .avatar-stack > div:not(:first-child) { margin-left: -8px; }
     .notification-badge { min-width: 18px; height: 18px; font-size: 10px; }
+    /* Mobile sidebar drawer */
+    .sidebar-desktop { transform: translateX(0); transition: transform 0.25s ease; }
+    .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 29; }
     @media (max-width: 768px) {
-      .sidebar-desktop { display: none; }
-      .main-content { margin-left: 0 !important; }
+      .sidebar-desktop { transform: translateX(-100%); }
+      .sidebar-desktop.open { transform: translateX(0); }
+      .sidebar-desktop.open + .mobile-overlay { display: block; }
+      .main-content { margin-left: 0 !important; padding-top: 56px; }
+      /* Touch-friendly targets */
+      select, input[type="text"], input[type="email"], input[type="password"], input[type="tel"],
+      input[type="number"], input[type="datetime-local"], textarea, button {
+        min-height: 44px; font-size: 16px !important;
+      }
+      .sidebar-link { padding: 12px 16px !important; }
+      .status-badge { font-size: 12px; padding: 4px 10px; }
+      .kanban-col { min-width: 260px; max-width: 280px; }
+      /* Full-screen modals on mobile */
+      .modal-overlay > div { max-width: 100% !important; max-height: 100vh !important; border-radius: 0 !important; height: 100vh; margin: 0 !important; }
+      .modal-overlay { padding: 0 !important; align-items: stretch !important; padding-top: 0 !important; }
+      /* Mobile task cards */
+      .task-row { padding: 12px 16px !important; }
+      .mobile-card-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }
+    }
+    @media (max-width: 480px) {
+      select { font-size: 14px !important; }
     }
   </style>
 </head>
@@ -50,7 +72,7 @@ const S = {
   users: [], processes: [], notifications: [], unreadCount: 0, dashboard: null,
   filters: { status: '', priority: '', client_id: '', project_id: '', assigned_to: '', search: '' },
   viewMode: 'list', selectedTask: null, showTaskModal: false, showNewTaskModal: false,
-  sidebarOpen: false, loading: true, editingProject: null, editingClient: null,
+  sidebarOpen: false, loading: true, editingProject: null, editingClient: null, showFilters: false,
 };
 
 // ==================== API ====================
@@ -145,6 +167,7 @@ function navigate(page) {
   S.currentPage = page;
   S.showTaskModal = false;
   S.showNewTaskModal = false;
+  closeMobileSidebar();
   const urlMap = { dashboard: '/', tasks: '/tasks', projects: '/projects', clients: '/clients', team: '/team', processes: '/processes', notifications: '/notifications', settings: '/settings', 'gmail-setup': '/gmail-setup' };
   history.pushState(null, '', urlMap[page] || '/');
   render();
@@ -190,7 +213,7 @@ function avatar(name, size = 'w-7 h-7 text-xs') {
 
 // ==================== RENDER ====================
 function render() {
-  document.getElementById('app').innerHTML = renderSidebar() + '<div class="main-content md:ml-64 min-h-screen">' + renderTopBar() + '<div class="p-4 md:p-6">' + renderPage() + '</div></div>' + (S.showTaskModal ? renderTaskModal() : '') + (S.showNewTaskModal ? renderNewTaskModal() : '');
+  document.getElementById('app').innerHTML = renderSidebar() + '<div class="main-content md:ml-64 min-h-screen">' + renderTopBar() + '<div class="p-3 md:p-6">' + renderPage() + '</div></div>' + renderBottomNav() + (S.showTaskModal ? renderTaskModal() : '') + (S.showNewTaskModal ? renderNewTaskModal() : '');
   bindEvents();
 }
 
@@ -212,16 +235,34 @@ function renderSidebar() {
     '</nav>' +
     '<div class="p-4 border-t border-white/10"><div class="flex items-center gap-3">'+avatar(S.user?.name || 'U', 'w-9 h-9 text-sm')+'<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(S.user?.name)+'</div><div class="text-xs text-indigo-300 truncate">'+esc(S.user?.role)+'</div></div><button onclick="logout()" class="text-indigo-300 hover:text-white" title="Logout"><i class="fas fa-sign-out-alt"></i></button></div></div>' +
     '</div>' +
-    // Mobile hamburger
-    '<div class="md:hidden fixed top-0 left-0 right-0 bg-sidebar text-white z-40 px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2"><i class="fas fa-tasks text-indigo-400"></i><span class="font-bold text-sm">FlexBiz</span></div><div class="flex items-center gap-3"><button onclick="navigate(&apos;notifications&apos;)" class="relative"><i class="fas fa-bell text-indigo-300"></i>'+(S.unreadCount>0?'<span class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button><button onclick="toggleMobileSidebar()" class="text-indigo-300"><i class="fas fa-bars text-lg"></i></button></div></div>';
+    // Mobile overlay (closes sidebar when tapped)
+    '<div class="mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>' +
+    // Mobile top bar
+    '<div class="md:hidden fixed top-0 left-0 right-0 bg-sidebar text-white z-20 px-4 flex items-center justify-between" style="height:56px"><div class="flex items-center gap-2"><button onclick="toggleMobileSidebar()" class="text-indigo-300 p-2 -ml-2" style="min-height:44px;min-width:44px"><i class="fas fa-bars text-lg"></i></button><span class="font-bold text-sm">FlexBiz</span></div><div class="flex items-center gap-1"><button onclick="S.showNewTaskModal=true;render()" class="bg-indigo-500 text-white rounded-lg flex items-center justify-center" style="width:40px;height:40px"><i class="fas fa-plus"></i></button><button onclick="navigate(&apos;notifications&apos;)" class="relative flex items-center justify-center" style="width:40px;height:40px"><i class="fas fa-bell text-indigo-300 text-lg"></i>'+(S.unreadCount>0?'<span class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button></div></div>';
+}
+
+function renderBottomNav() {
+  const navItems = [
+    {id:'dashboard',icon:'fas fa-th-large',label:'Home'},
+    {id:'tasks',icon:'fas fa-tasks',label:'Tasks'},
+    {id:'projects',icon:'fas fa-project-diagram',label:'Projects'},
+    {id:'clients',icon:'fas fa-building',label:'Clients'},
+    {id:'settings',icon:'fas fa-ellipsis-h',label:'More'},
+  ];
+  return '<div class="mobile-bottom-nav">' +
+    navItems.map(n => '<button onclick="navigate(&apos;'+n.id+'&apos;)" class="'+(S.currentPage===n.id?'active':'')+'">' +
+      '<i class="'+n.icon+' nav-icon"></i>' +
+      (n.id==='notifications'&&S.unreadCount>0?'<span class="nav-badge">'+S.unreadCount+'</span>':'') +
+      '<span>'+n.label+'</span></button>').join('') +
+    '</div>';
 }
 
 function renderTopBar() {
-  return '<div class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-20 mt-12 md:mt-0">' +
-    '<div class="flex items-center gap-4 flex-1"><h1 class="text-lg font-bold text-gray-800 capitalize">'+S.currentPage.replace('-',' ')+'</h1>' +
-    '<div class="hidden md:flex items-center bg-gray-100 rounded-lg px-3 py-2 flex-1 max-w-md"><i class="fas fa-search text-gray-400 mr-2"></i><input type="text" placeholder="Search tasks..." class="bg-transparent outline-none text-sm flex-1" onkeyup="handleSearch(event)" value="'+esc(S.filters.search)+'"></div></div>' +
+  return '<div class="hidden md:flex bg-white border-b border-gray-200 px-4 md:px-6 py-3 items-center justify-between sticky top-0 z-20">' +
+    '<div class="flex items-center gap-3 flex-1 min-w-0"><h1 class="text-lg font-bold text-gray-800 capitalize truncate">'+S.currentPage.replace('-',' ')+'</h1>' +
+    '<div class="flex items-center bg-gray-100 rounded-lg px-3 py-2 flex-1 max-w-md"><i class="fas fa-search text-gray-400 mr-2"></i><input type="text" placeholder="Search tasks..." class="bg-transparent outline-none text-sm flex-1" onkeyup="handleSearch(event)" value="'+esc(S.filters.search)+'"></div></div>' +
     '<div class="flex items-center gap-3">' +
-    '<button onclick="S.showNewTaskModal=true;render()" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2"><i class="fas fa-plus"></i><span class="hidden md:inline">New Task</span></button>' +
+    '<button onclick="S.showNewTaskModal=true;render()" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2"><i class="fas fa-plus"></i><span>New Task</span></button>' +
     '<button onclick="navigate(&apos;notifications&apos;)" class="relative p-2 text-gray-500 hover:text-gray-700"><i class="fas fa-bell text-lg"></i>'+(S.unreadCount>0?'<span class="absolute top-0 right-0 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button>' +
     '</div></div>';
 }
@@ -284,17 +325,24 @@ function activityText(a) { return {created:'created',updated:'updated',status_ch
 
 // ==================== TASKS PAGE ====================
 function renderTasksPage() {
-  return '<div class="mb-4 flex flex-wrap items-center gap-3">' +
-    // View mode toggle
-    '<div class="flex bg-white border rounded-lg overflow-hidden"><button onclick="S.viewMode=&apos;list&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='list'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list mr-1"></i>List</button><button onclick="S.viewMode=&apos;kanban&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='kanban'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-columns mr-1"></i>Board</button></div>' +
-    // Filters
-    '<select onchange="S.filters.status=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Statuses</option><option value="todo"'+(S.filters.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(S.filters.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(S.filters.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(S.filters.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(S.filters.status==='done'?' selected':'')+'>Done</option></select>' +
-    '<select onchange="S.filters.priority=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Priorities</option><option value="urgent"'+(S.filters.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(S.filters.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(S.filters.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(S.filters.priority==='low'?' selected':'')+'>Low</option></select>' +
-    '<select onchange="S.filters.client_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Clients</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(S.filters.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select>' +
-    '<select onchange="S.filters.project_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Projects</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(S.filters.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>' +
-    '<select onchange="S.filters.assigned_to=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Assignees</option>'+S.users.map(u=>'<option value="'+u.id+'"'+(S.filters.assigned_to==u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>' +
-    (Object.values(S.filters).some(v=>v) ? '<button onclick="clearFilters()" class="text-sm text-red-500 hover:text-red-700"><i class="fas fa-times mr-1"></i>Clear</button>' : '') +
-    '<div class="ml-auto text-sm text-gray-500">'+S.tasks.length+' tasks</div></div>' +
+  const activeFilterCount = Object.values(S.filters).filter(v=>v).length;
+  return '<div class="mb-4 space-y-3">' +
+    // Top row: view toggle + search on mobile + count
+    '<div class="flex items-center gap-2">' +
+    '<div class="flex bg-white border rounded-lg overflow-hidden"><button onclick="S.viewMode=&apos;list&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='list'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list"></i><span class="hidden sm:inline ml-1">List</span></button><button onclick="S.viewMode=&apos;kanban&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='kanban'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-columns"></i><span class="hidden sm:inline ml-1">Board</span></button></div>' +
+    // Mobile search
+    '<div class="md:hidden flex items-center bg-gray-100 rounded-lg px-3 py-2 flex-1"><i class="fas fa-search text-gray-400 mr-2"></i><input type="text" placeholder="Search..." class="bg-transparent outline-none text-sm flex-1" onkeyup="handleSearch(event)" value="'+esc(S.filters.search)+'"></div>' +
+    '<button onclick="S.showFilters=!S.showFilters;render()" class="md:hidden flex items-center gap-1 px-3 py-2 border rounded-lg text-sm '+(activeFilterCount>0?'bg-indigo-50 border-indigo-300 text-indigo-700':'text-gray-500')+'"><i class="fas fa-filter"></i>'+(activeFilterCount>0?'<span class="bg-indigo-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">'+activeFilterCount+'</span>':'')+'</button>' +
+    '<div class="ml-auto text-sm text-gray-500 hidden sm:block">'+S.tasks.length+' tasks</div></div>' +
+    // Filter row (hidden on mobile by default, toggled)
+    '<div class="'+(S.showFilters===false?'hidden md:flex':'flex')+' flex-wrap items-center gap-2">' +
+    '<select onchange="S.filters.status=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Statuses</option><option value="todo"'+(S.filters.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(S.filters.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(S.filters.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(S.filters.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(S.filters.status==='done'?' selected':'')+'>Done</option></select>' +
+    '<select onchange="S.filters.priority=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Priorities</option><option value="urgent"'+(S.filters.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(S.filters.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(S.filters.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(S.filters.priority==='low'?' selected':'')+'>Low</option></select>' +
+    '<select onchange="S.filters.client_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Clients</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(S.filters.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select>' +
+    '<select onchange="S.filters.project_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Projects</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(S.filters.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>' +
+    '<select onchange="S.filters.assigned_to=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Assignees</option>'+S.users.map(u=>'<option value="'+u.id+'"'+(S.filters.assigned_to==u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>' +
+    (activeFilterCount>0 ? '<button onclick="clearFilters()" class="text-sm text-red-500 hover:text-red-700 px-3 py-2"><i class="fas fa-times mr-1"></i>Clear</button>' : '') +
+    '</div></div>' +
     (S.viewMode === 'list' ? renderTaskList() : renderKanban());
 }
 
@@ -305,15 +353,38 @@ function renderTaskList() {
     '<div class="hidden md:grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b"><div class="col-span-4">Task</div><div class="col-span-2">Project / Client</div><div class="col-span-1">Priority</div><div class="col-span-1">Status</div><div class="col-span-2">Assignees</div><div class="col-span-1">Due Date</div><div class="col-span-1">Info</div></div>' +
     S.tasks.map(t => {
       const assignees = t.assignments?.filter(a => a.role === 'assignee') || [];
-      return '<div class="task-row grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')">' +
-        '<div class="col-span-12 md:col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
-        '<div class="hidden md:block col-span-2"><div class="text-xs">'+(t.project_name?'<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:'+esc(t.project_color||'#6366f1')+'"></span>'+esc(t.project_name)+'</span>':'')+'</div><div class="text-xs text-gray-400">'+(t.client_name||'')+'</div></div>' +
-        '<div class="hidden md:block col-span-1">'+priorityIcon(t.priority)+' <span class="text-xs capitalize text-gray-500">'+t.priority+'</span></div>' +
-        '<div class="hidden md:block col-span-1"><span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span></div>' +
-        '<div class="hidden md:block col-span-2"><div class="avatar-stack flex">'+(assignees.length>0 ? assignees.slice(0,3).map(a=>avatar(a.user_name)).join('') + (assignees.length>3?'<div class="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs text-gray-600">+'+( assignees.length-3)+'</div>':'') : '<span class="text-xs text-gray-400">Unassigned</span>')+'</div></div>' +
-        '<div class="hidden md:block col-span-1">'+dueLabel(t.due_date)+'</div>' +
-        '<div class="hidden md:block col-span-1 flex items-center gap-2 text-xs text-gray-400">'+(t.subtask_count>0?'<span title="Subtasks"><i class="fas fa-sitemap mr-1"></i>'+t.subtask_done_count+'/'+t.subtask_count+'</span> ':'')+(t.comment_count>0?'<span title="Comments"><i class="fas fa-comment mr-1"></i>'+t.comment_count+'</span> ':'')+(t.attachment_count>0?'<span title="Files"><i class="fas fa-paperclip mr-1"></i>'+t.attachment_count+'</span>':'')+'</div>' +
-        '</div>';
+      const assigneeNames = assignees.map(a => a.user_name).join(', ');
+      return '<!-- Desktop row -->' +
+        '<div class="task-row hidden md:grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')">' +
+        '<div class="col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
+        '<div class="col-span-2"><div class="text-xs">'+(t.project_name?'<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:'+esc(t.project_color||'#6366f1')+'"></span>'+esc(t.project_name)+'</span>':'')+'</div><div class="text-xs text-gray-400">'+(t.client_name||'')+'</div></div>' +
+        '<div class="col-span-1">'+priorityIcon(t.priority)+' <span class="text-xs capitalize text-gray-500">'+t.priority+'</span></div>' +
+        '<div class="col-span-1"><span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span></div>' +
+        '<div class="col-span-2"><div class="avatar-stack flex">'+(assignees.length>0 ? assignees.slice(0,3).map(a=>avatar(a.user_name)).join('') + (assignees.length>3?'<div class="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs text-gray-600">+'+(assignees.length-3)+'</div>':'') : '<span class="text-xs text-gray-400">Unassigned</span>')+'</div></div>' +
+        '<div class="col-span-1">'+dueLabel(t.due_date)+'</div>' +
+        '<div class="col-span-1 flex items-center gap-2 text-xs text-gray-400">'+(t.subtask_count>0?'<span><i class="fas fa-sitemap mr-1"></i>'+t.subtask_done_count+'/'+t.subtask_count+'</span> ':'')+(t.comment_count>0?'<span><i class="fas fa-comment mr-1"></i>'+t.comment_count+'</span> ':'')+(t.attachment_count>0?'<span><i class="fas fa-paperclip mr-1"></i>'+t.attachment_count+'</span>':'')+'</div>' +
+        '</div>' +
+        '<!-- Mobile card -->' +
+        '<div class="md:hidden task-row border-b border-gray-100 cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')" style="padding:14px 16px">' +
+        '<div class="flex items-start gap-3">' +
+        '<button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 active:border-indigo-400')+' flex items-center justify-center" style="width:28px;height:28px;margin-top:2px">'+(t.status==='done'?'<i class="fas fa-check text-xs"></i>':'')+'</button>' +
+        '<div class="flex-1 min-w-0">' +
+        '<div class="text-[15px] font-medium leading-snug '+(t.status==='done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</div>' +
+        '<div class="flex flex-wrap gap-2 mt-2 items-center">' +
+        '<span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>' +
+        priorityIcon(t.priority) +
+        dueLabel(t.due_date) +
+        '</div>' +
+        '<div class="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 items-center">' +
+        (t.client_name?'<span class="text-xs text-gray-400"><i class="fas fa-building mr-0.5"></i>'+esc(t.client_name)+'</span>':'') +
+        (t.project_name?'<span class="text-xs text-gray-400"><i class="fas fa-folder mr-0.5"></i>'+esc(t.project_name)+'</span>':'') +
+        (assigneeNames?'<span class="text-xs text-gray-400"><i class="fas fa-user mr-0.5"></i>'+esc(assigneeNames)+'</span>':'') +
+        (t.subtask_count>0?'<span class="text-xs text-gray-400"><i class="fas fa-sitemap mr-0.5"></i>'+t.subtask_done_count+'/'+t.subtask_count+'</span>':'') +
+        (t.comment_count>0?'<span class="text-xs text-gray-400"><i class="fas fa-comment mr-0.5"></i>'+t.comment_count+'</span>':'') +
+        '</div>' +
+        '</div>' +
+        '<i class="fas fa-chevron-right text-gray-300 mt-1 flex-shrink-0"></i>' +
+        '</div></div>';
     }).join('') + '</div>';
 }
 
@@ -374,19 +445,19 @@ function renderTaskModal() {
   const assignees = t.assignments?.filter(a => a.role === 'assignee') || [];
   const watchers = t.assignments?.filter(a => a.role === 'watcher') || [];
 
-  return '<div class="fixed inset-0 z-50 modal-overlay flex items-start justify-center pt-8 md:pt-16 px-4" onclick="if(event.target===this){S.showTaskModal=false;render()}">' +
-    '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col fade-in">' +
+  return '<div class="fixed inset-0 z-50 modal-overlay flex items-end md:items-start justify-center md:pt-16 px-0 md:px-4" onclick="if(event.target===this){S.showTaskModal=false;render()}">' +
+    '<div class="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-3xl max-h-[95vh] md:max-h-[85vh] overflow-hidden flex flex-col slide-up md:fade-in">' +
     // Header
-    '<div class="px-6 py-4 border-b flex items-center justify-between bg-gray-50">' +
+    '<div class="px-4 md:px-6 py-3 md:py-4 border-b flex items-center justify-between bg-gray-50">' +
     '<div class="flex items-center gap-3">' +
     '<span class="status-badge '+statusColor(t.status)+' cursor-pointer" onclick="cycleStatus()">'+t.status.replace('_',' ')+'</span>' +
     priorityIcon(t.priority) +
     (t.project_name?'<span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full"><span class="w-2 h-2 rounded-full inline-block mr-1" style="background:'+esc(t.project_color)+'"></span>'+esc(t.project_name)+'</span>':'') +
     (t.client_name?'<span class="text-xs text-gray-500">'+esc(t.client_name)+'</span>':'') +
     '</div>' +
-    '<div class="flex items-center gap-2"><button onclick="deleteTask('+t.id+')" class="text-gray-400 hover:text-red-500 p-1" title="Delete"><i class="fas fa-trash text-sm"></i></button><button onclick="S.showTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 p-1"><i class="fas fa-times text-lg"></i></button></div></div>' +
+    '<div class="flex items-center gap-1"><button onclick="deleteTask('+t.id+')" class="text-gray-400 hover:text-red-500 flex items-center justify-center" style="width:44px;height:44px" title="Delete"><i class="fas fa-trash text-sm"></i></button><button onclick="S.showTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times text-lg"></i></button></div></div>' +
     // Body
-    '<div class="flex-1 overflow-y-auto p-6">' +
+    '<div class="flex-1 overflow-y-auto p-4 md:p-6" style="-webkit-overflow-scrolling:touch">' +
     // Title (editable)
     '<div class="mb-4"><input type="text" value="'+esc(t.title)+'" class="text-xl font-bold w-full border-0 focus:ring-0 p-0 bg-transparent" onchange="updateTaskField('+t.id+',&apos;title&apos;,this.value)"></div>' +
     // Description
@@ -484,10 +555,10 @@ async function cycleStatus() {
 
 // ==================== NEW TASK MODAL ====================
 function renderNewTaskModal() {
-  return '<div class="fixed inset-0 z-50 modal-overlay flex items-start justify-center pt-8 md:pt-16 px-4" onclick="if(event.target===this){S.showNewTaskModal=false;render()}">' +
-    '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden fade-in">' +
-    '<div class="px-6 py-4 border-b bg-gray-50 flex items-center justify-between"><h3 class="font-bold text-gray-800"><i class="fas fa-plus-circle text-indigo-500 mr-2"></i>New Task</h3><button onclick="S.showNewTaskModal=false;render()" class="text-gray-400 hover:text-gray-700"><i class="fas fa-times"></i></button></div>' +
-    '<form id="newTaskForm" class="p-6 space-y-4">' +
+  return '<div class="fixed inset-0 z-50 modal-overlay flex items-end md:items-start justify-center md:pt-16 px-0 md:px-4" onclick="if(event.target===this){S.showNewTaskModal=false;render()}">' +
+    '<div class="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden slide-up md:fade-in">' +
+    '<div class="px-4 md:px-6 py-3 md:py-4 border-b bg-gray-50 flex items-center justify-between"><h3 class="font-bold text-gray-800"><i class="fas fa-plus-circle text-indigo-500 mr-2"></i>New Task</h3><button onclick="S.showNewTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times"></i></button></div>' +
+    '<form id="newTaskForm" class="p-4 md:p-6 space-y-4 overflow-y-auto" style="max-height:calc(95vh - 60px);-webkit-overflow-scrolling:touch">' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Title *</label><input type="text" id="nt_title" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200" placeholder="What needs to be done?"></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Description</label><textarea id="nt_desc" class="w-full border rounded-lg px-3 py-2 text-sm min-h-[60px]" placeholder="Add details..."></textarea></div>' +
     '<div class="grid grid-cols-2 gap-4">' +
@@ -903,9 +974,18 @@ function logout() {
 }
 
 function toggleMobileSidebar() {
-  // Simple toggle for mobile
   const el = document.querySelector('.sidebar-desktop');
-  if (el) el.classList.toggle('sidebar-desktop');
+  const ov = document.getElementById('mobileOverlay');
+  if (el) el.classList.toggle('open');
+  if (ov) ov.classList.toggle('show');
+  document.body.style.overflow = el && el.classList.contains('open') ? 'hidden' : '';
+}
+function closeMobileSidebar() {
+  const el = document.querySelector('.sidebar-desktop');
+  const ov = document.getElementById('mobileOverlay');
+  if (el) el.classList.remove('open');
+  if (ov) ov.classList.remove('show');
+  document.body.style.overflow = '';
 }
 
 // Boot
