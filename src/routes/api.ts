@@ -315,6 +315,14 @@ apiRoutes.put('/tasks/:id', async (c) => {
 apiRoutes.delete('/tasks/:id', async (c) => {
   const id = parseInt(c.req.param('id'))
   if (c.get('userType') === 'client') return c.json({ error: 'Clients cannot delete tasks' }, 403)
+  // Delete subtasks first (they reference parent_task_id)
+  await c.env.DB.prepare('DELETE FROM tasks WHERE parent_task_id = ?').bind(id).run()
+  // Clean up related data
+  await c.env.DB.prepare('DELETE FROM task_assignments WHERE task_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM comments WHERE task_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM attachments WHERE task_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM activity_log WHERE task_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM notifications WHERE task_id = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
@@ -457,7 +465,10 @@ apiRoutes.put('/projects/:id', async (c) => {
 
 apiRoutes.delete('/projects/:id', async (c) => {
   if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
-  await c.env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(parseInt(c.req.param('id'))).run()
+  const id = parseInt(c.req.param('id'))
+  // Unlink tasks from this project
+  await c.env.DB.prepare('UPDATE tasks SET project_id = NULL WHERE project_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
 
@@ -511,6 +522,9 @@ apiRoutes.delete('/clients/:id', async (c) => {
   // Remove client references from tasks and projects
   await c.env.DB.prepare('UPDATE tasks SET client_id = NULL WHERE client_id = ?').bind(id).run()
   await c.env.DB.prepare('UPDATE projects SET client_id = NULL WHERE client_id = ?').bind(id).run()
+  // Clean up sessions and notifications
+  await c.env.DB.prepare('DELETE FROM sessions WHERE client_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM notifications WHERE recipient_id = ? AND recipient_type = ?').bind(id, 'client').run()
   await c.env.DB.prepare('DELETE FROM clients WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
@@ -565,9 +579,16 @@ apiRoutes.delete('/users/:id', async (c) => {
   const id = parseInt(c.req.param('id'))
   // Don't allow deleting yourself
   if (id === c.get('entityId')) return c.json({ error: 'Cannot delete your own account' }, 400)
-  // Remove assignments and deactivate instead of hard delete to preserve history
+  // Clean up all references to this user
   await c.env.DB.prepare('DELETE FROM task_assignments WHERE user_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM task_assignments WHERE assigned_by = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM email_integrations WHERE user_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM notifications WHERE recipient_id = ? AND recipient_type = ?').bind(id, 'user').run()
+  // Nullify created_by references
+  await c.env.DB.prepare('UPDATE tasks SET created_by = NULL WHERE created_by = ? AND created_by_type = ?').bind(id, 'user').run()
+  await c.env.DB.prepare('UPDATE projects SET created_by = NULL WHERE created_by = ?').bind(id).run()
+  await c.env.DB.prepare('UPDATE processes SET created_by = NULL WHERE created_by = ?').bind(id).run()
   await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
@@ -605,7 +626,10 @@ apiRoutes.put('/processes/:id', async (c) => {
 
 apiRoutes.delete('/processes/:id', async (c) => {
   if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
-  await c.env.DB.prepare('DELETE FROM processes WHERE id = ?').bind(parseInt(c.req.param('id'))).run()
+  const id = parseInt(c.req.param('id'))
+  // Unlink tasks from this process
+  await c.env.DB.prepare('UPDATE tasks SET process_id = NULL WHERE process_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM processes WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
 
