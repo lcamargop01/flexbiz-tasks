@@ -4,6 +4,7 @@ export function renderDashboard(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>FlexBiz Solutions - Task Manager</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={theme:{extend:{colors:{primary:'#6366f1',sidebar:'#1e1b4b'}}}}</script>
@@ -207,12 +208,12 @@ function renderSidebar() {
   return '<div class="sidebar-desktop fixed left-0 top-0 bottom-0 w-64 bg-sidebar text-white z-30 flex flex-col">' +
     '<div class="p-5 border-b border-white/10"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center"><i class="fas fa-tasks text-lg"></i></div><div><div class="font-bold text-sm">FlexBiz Solutions</div><div class="text-xs text-indigo-300">Task Manager</div></div></div></div>' +
     '<nav class="flex-1 p-3 space-y-1 overflow-y-auto">' +
-    links.map(l => '<a onclick="navigate(\''+l.id+'\')" class="sidebar-link flex items-center gap-3 px-3 py-2.5 cursor-pointer text-sm '+(S.currentPage===l.id?'active bg-white/10 text-white':'text-indigo-200 hover:text-white')+'"><i class="'+l.icon+' w-5 text-center"></i><span>'+l.label+'</span></a>').join('') +
+    links.map(l => '<a onclick="navigate(&apos;'+l.id+'&apos;)" class="sidebar-link flex items-center gap-3 px-3 py-2.5 cursor-pointer text-sm '+(S.currentPage===l.id?'active bg-white/10 text-white':'text-indigo-200 hover:text-white')+'"><i class="'+l.icon+' w-5 text-center"></i><span>'+l.label+'</span></a>').join('') +
     '</nav>' +
     '<div class="p-4 border-t border-white/10"><div class="flex items-center gap-3">'+avatar(S.user?.name || 'U', 'w-9 h-9 text-sm')+'<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(S.user?.name)+'</div><div class="text-xs text-indigo-300 truncate">'+esc(S.user?.role)+'</div></div><button onclick="logout()" class="text-indigo-300 hover:text-white" title="Logout"><i class="fas fa-sign-out-alt"></i></button></div></div>' +
     '</div>' +
     // Mobile hamburger
-    '<div class="md:hidden fixed top-0 left-0 right-0 bg-sidebar text-white z-40 px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2"><i class="fas fa-tasks text-indigo-400"></i><span class="font-bold text-sm">FlexBiz</span></div><div class="flex items-center gap-3"><button onclick="navigate(\'notifications\')" class="relative"><i class="fas fa-bell text-indigo-300"></i>'+(S.unreadCount>0?'<span class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button><button onclick="toggleMobileSidebar()" class="text-indigo-300"><i class="fas fa-bars text-lg"></i></button></div></div>';
+    '<div class="md:hidden fixed top-0 left-0 right-0 bg-sidebar text-white z-40 px-4 py-3 flex items-center justify-between"><div class="flex items-center gap-2"><i class="fas fa-tasks text-indigo-400"></i><span class="font-bold text-sm">FlexBiz</span></div><div class="flex items-center gap-3"><button onclick="navigate(&apos;notifications&apos;)" class="relative"><i class="fas fa-bell text-indigo-300"></i>'+(S.unreadCount>0?'<span class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button><button onclick="toggleMobileSidebar()" class="text-indigo-300"><i class="fas fa-bars text-lg"></i></button></div></div>';
 }
 
 function renderTopBar() {
@@ -221,7 +222,7 @@ function renderTopBar() {
     '<div class="hidden md:flex items-center bg-gray-100 rounded-lg px-3 py-2 flex-1 max-w-md"><i class="fas fa-search text-gray-400 mr-2"></i><input type="text" placeholder="Search tasks..." class="bg-transparent outline-none text-sm flex-1" onkeyup="handleSearch(event)" value="'+esc(S.filters.search)+'"></div></div>' +
     '<div class="flex items-center gap-3">' +
     '<button onclick="S.showNewTaskModal=true;render()" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2"><i class="fas fa-plus"></i><span class="hidden md:inline">New Task</span></button>' +
-    '<button onclick="navigate(\'notifications\')" class="relative p-2 text-gray-500 hover:text-gray-700"><i class="fas fa-bell text-lg"></i>'+(S.unreadCount>0?'<span class="absolute top-0 right-0 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button>' +
+    '<button onclick="navigate(&apos;notifications&apos;)" class="relative p-2 text-gray-500 hover:text-gray-700"><i class="fas fa-bell text-lg"></i>'+(S.unreadCount>0?'<span class="absolute top-0 right-0 bg-red-500 text-white rounded-full notification-badge flex items-center justify-center">'+S.unreadCount+'</span>':'')+'</button>' +
     '</div></div>';
 }
 
@@ -269,7 +270,7 @@ function renderDashboardPage() {
     ['urgent','high','medium','low'].map(p => {
       const count = priorityCounts[p] || 0;
       const colors = {urgent:'border-red-400 bg-red-50',high:'border-orange-400 bg-orange-50',medium:'border-yellow-400 bg-yellow-50',low:'border-green-400 bg-green-50'};
-      return '<div class="border-l-4 '+colors[p]+' rounded-r-lg p-4 cursor-pointer hover:shadow-sm transition-shadow" onclick="S.filters.priority=\''+p+'\';navigate(\'tasks\')">' +
+      return '<div class="border-l-4 '+colors[p]+' rounded-r-lg p-4 cursor-pointer hover:shadow-sm transition-shadow" onclick="S.filters.priority=&apos;'+p+'&apos;;navigate(&apos;tasks&apos;)">' +
         '<div class="text-2xl font-bold">'+count+'</div><div class="text-sm capitalize text-gray-600">'+p+' priority</div></div>';
     }).join('') + '</div>';
 }
@@ -285,7 +286,7 @@ function activityText(a) { return {created:'created',updated:'updated',status_ch
 function renderTasksPage() {
   return '<div class="mb-4 flex flex-wrap items-center gap-3">' +
     // View mode toggle
-    '<div class="flex bg-white border rounded-lg overflow-hidden"><button onclick="S.viewMode=\'list\';render()" class="px-3 py-2 text-sm '+(S.viewMode==='list'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list mr-1"></i>List</button><button onclick="S.viewMode=\'kanban\';render()" class="px-3 py-2 text-sm '+(S.viewMode==='kanban'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-columns mr-1"></i>Board</button></div>' +
+    '<div class="flex bg-white border rounded-lg overflow-hidden"><button onclick="S.viewMode=&apos;list&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='list'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list mr-1"></i>List</button><button onclick="S.viewMode=&apos;kanban&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='kanban'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-columns mr-1"></i>Board</button></div>' +
     // Filters
     '<select onchange="S.filters.status=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Statuses</option><option value="todo"'+(S.filters.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(S.filters.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(S.filters.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(S.filters.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(S.filters.status==='done'?' selected':'')+'>Done</option></select>' +
     '<select onchange="S.filters.priority=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="">All Priorities</option><option value="urgent"'+(S.filters.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(S.filters.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(S.filters.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(S.filters.priority==='low'?' selected':'')+'>Low</option></select>' +
@@ -305,7 +306,7 @@ function renderTaskList() {
     S.tasks.map(t => {
       const assignees = t.assignments?.filter(a => a.role === 'assignee') || [];
       return '<div class="task-row grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')">' +
-        '<div class="col-span-12 md:col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',\\''+t.status+'\\')" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
+        '<div class="col-span-12 md:col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
         '<div class="hidden md:block col-span-2"><div class="text-xs">'+(t.project_name?'<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:'+esc(t.project_color||'#6366f1')+'"></span>'+esc(t.project_name)+'</span>':'')+'</div><div class="text-xs text-gray-400">'+(t.client_name||'')+'</div></div>' +
         '<div class="hidden md:block col-span-1">'+priorityIcon(t.priority)+' <span class="text-xs capitalize text-gray-500">'+t.priority+'</span></div>' +
         '<div class="hidden md:block col-span-1"><span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span></div>' +
@@ -326,10 +327,10 @@ function renderKanban() {
       const tasks = S.tasks.filter(t => t.status === status);
       return '<div class="kanban-col flex-shrink-0"><div class="bg-gray-100 rounded-xl p-3">' +
         '<div class="flex items-center justify-between mb-3 px-1"><div class="flex items-center gap-2"><i class="'+statusIcons[status]+' text-sm"></i><span class="font-semibold text-sm">'+statusLabels[status]+'</span></div><span class="bg-white text-gray-500 text-xs font-semibold px-2 py-0.5 rounded-full">'+tasks.length+'</span></div>' +
-        '<div class="space-y-2 min-h-[100px] drop-zone" data-status="'+status+'" ondragover="event.preventDefault();this.classList.add(\'drag-over\')" ondragleave="this.classList.remove(\'drag-over\')" ondrop="handleDrop(event,\''+status+'\')">' +
+        '<div class="space-y-2 min-h-[100px] drop-zone" data-status="'+status+'" ondragover="event.preventDefault();this.classList.add(&apos;drag-over&apos;)" ondragleave="this.classList.remove(&apos;drag-over&apos;)" ondrop="handleDrop(event,&apos;'+status+'&apos;)">' +
         tasks.map(t => {
           const assignees = t.assignments?.filter(a => a.role === 'assignee') || [];
-          return '<div class="bg-white rounded-lg p-3 shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow priority-'+t.priority+'" draggable="true" ondragstart="event.dataTransfer.setData(\'text/plain\','+t.id+')" onclick="loadTaskDetail('+t.id+')">' +
+          return '<div class="bg-white rounded-lg p-3 shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow priority-'+t.priority+'" draggable="true" ondragstart="event.dataTransfer.setData(&apos;text/plain&apos;,'+t.id+')" onclick="loadTaskDetail('+t.id+')">' +
             '<div class="text-sm font-medium mb-2">'+esc(t.title)+'</div>' +
             (t.project_name?'<div class="flex items-center gap-1 mb-2"><span class="w-2 h-2 rounded-full" style="background:'+esc(t.project_color||'#6366f1')+'"></span><span class="text-xs text-gray-500">'+esc(t.project_name)+'</span></div>':'') +
             '<div class="flex items-center justify-between">' +
@@ -387,27 +388,27 @@ function renderTaskModal() {
     // Body
     '<div class="flex-1 overflow-y-auto p-6">' +
     // Title (editable)
-    '<div class="mb-4"><input type="text" value="'+esc(t.title)+'" class="text-xl font-bold w-full border-0 focus:ring-0 p-0 bg-transparent" onchange="updateTaskField('+t.id+',\'title\',this.value)"></div>' +
+    '<div class="mb-4"><input type="text" value="'+esc(t.title)+'" class="text-xl font-bold w-full border-0 focus:ring-0 p-0 bg-transparent" onchange="updateTaskField('+t.id+',&apos;title&apos;,this.value)"></div>' +
     // Description
-    '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Description</label><textarea class="w-full border border-gray-200 rounded-lg p-3 text-sm min-h-[80px] focus:ring-2 focus:ring-indigo-200" onchange="updateTaskField('+t.id+',\'description\',this.value)">'+esc(t.description||'')+'</textarea></div>' +
+    '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Description</label><textarea class="w-full border border-gray-200 rounded-lg p-3 text-sm min-h-[80px] focus:ring-2 focus:ring-indigo-200" onchange="updateTaskField('+t.id+',&apos;description&apos;,this.value)">'+esc(t.description||'')+'</textarea></div>' +
     // Meta grid
     '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">' +
-    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Status</label><select onchange="updateTaskField('+t.id+',\'status\',this.value);S.selectedTask.status=this.value;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(t.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
-    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Priority</label><select onchange="updateTaskField('+t.id+',\'priority\',this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="urgent"'+(t.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(t.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(t.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(t.priority==='low'?' selected':'')+'>Low</option></select></div>' +
-    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Due Date</label><input type="datetime-local" value="'+(t.due_date?t.due_date.slice(0,16):'')+'" onchange="updateTaskField('+t.id+',\'due_date\',this.value)" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
-    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Est. Hours</label><input type="number" value="'+(t.estimated_hours||'')+'" onchange="updateTaskField('+t.id+',\'estimated_hours\',parseFloat(this.value))" class="w-full text-sm border rounded-lg px-3 py-2" step="0.5"></div></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Status</label><select onchange="updateTaskField('+t.id+',&apos;status&apos;,this.value);S.selectedTask.status=this.value;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(t.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Priority</label><select onchange="updateTaskField('+t.id+',&apos;priority&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="urgent"'+(t.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(t.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(t.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(t.priority==='low'?' selected':'')+'>Low</option></select></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Due Date</label><input type="datetime-local" value="'+(t.due_date?t.due_date.slice(0,16):'')+'" onchange="updateTaskField('+t.id+',&apos;due_date&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Est. Hours</label><input type="number" value="'+(t.estimated_hours||'')+'" onchange="updateTaskField('+t.id+',&apos;estimated_hours&apos;,parseFloat(this.value))" class="w-full text-sm border rounded-lg px-3 py-2" step="0.5"></div></div>' +
     // Assignees
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Assignees</label><div class="flex flex-wrap gap-2">' +
     assignees.map(a => '<div class="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1.5">'+avatar(a.user_name,'w-6 h-6 text-[10px]')+'<span class="text-sm">'+esc(a.user_name)+'</span><button onclick="removeAssignee('+t.id+','+a.user_id+')" class="text-gray-400 hover:text-red-500 text-xs"><i class="fas fa-times"></i></button></div>').join('') +
     '<select onchange="addAssignee('+t.id+',this.value);this.selectedIndex=0" class="text-sm border rounded-full px-3 py-1.5 bg-white"><option value="">+ Add assignee</option>'+S.users.filter(u=>!assignees.find(a=>a.user_id===u.id)).map(u=>'<option value="'+u.id+'">'+esc(u.name)+'</option>').join('')+'</select></div></div>' +
     // Subtasks
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Subtasks '+(t.subtasks?.length?'('+t.subtasks.filter(s=>s.status==='done').length+'/'+t.subtasks.length+')':'')+'</label>' +
-    '<div class="space-y-1">' + (t.subtasks||[]).map(st => '<div class="flex items-center gap-2 p-2 rounded hover:bg-gray-50"><button onclick="quickStatus('+st.id+',\''+st.status+'\')" class="w-5 h-5 rounded-full border-2 '+(st.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300')+' flex items-center justify-center text-xs flex-shrink-0">'+(st.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><span class="text-sm '+(st.status==='done'?'line-through text-gray-400':'')+'">'+esc(st.title)+'</span><span class="text-xs text-gray-400 ml-auto">'+(st.assignee_names||'')+'</span></div>').join('') +
-    '</div><div class="mt-2 flex gap-2"><input type="text" id="newSubtask" placeholder="Add subtask..." class="flex-1 text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===\'Enter\')addSubtask('+t.id+')"><button onclick="addSubtask('+t.id+')" class="text-sm text-indigo-600 hover:text-indigo-800 px-3"><i class="fas fa-plus mr-1"></i>Add</button></div></div>' +
+    '<div class="space-y-1">' + (t.subtasks||[]).map(st => '<div class="flex items-center gap-2 p-2 rounded hover:bg-gray-50"><button onclick="quickStatus('+st.id+',&apos;'+st.status+'&apos;)" class="w-5 h-5 rounded-full border-2 '+(st.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300')+' flex items-center justify-center text-xs flex-shrink-0">'+(st.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><span class="text-sm '+(st.status==='done'?'line-through text-gray-400':'')+'">'+esc(st.title)+'</span><span class="text-xs text-gray-400 ml-auto">'+(st.assignee_names||'')+'</span></div>').join('') +
+    '</div><div class="mt-2 flex gap-2"><input type="text" id="newSubtask" placeholder="Add subtask..." class="flex-1 text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===&apos;Enter&apos;)addSubtask('+t.id+')"><button onclick="addSubtask('+t.id+')" class="text-sm text-indigo-600 hover:text-indigo-800 px-3"><i class="fas fa-plus mr-1"></i>Add</button></div></div>' +
     // Attachments
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Attachments ('+((t.attachments||[]).length)+')</label>' +
     '<div class="space-y-1">'+(t.attachments||[]).map(a => '<div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"><i class="fas fa-file text-gray-400"></i><span class="text-sm">'+esc(a.filename)+'</span><span class="text-xs text-gray-400 ml-auto">'+timeAgo(a.created_at)+'</span></div>').join('')+'</div>' +
-    '<div class="mt-2"><input type="text" id="attachUrl" placeholder="Paste file URL..." class="w-full text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===\'Enter\')addAttachment('+t.id+')"></div></div>' +
+    '<div class="mt-2"><input type="text" id="attachUrl" placeholder="Paste file URL..." class="w-full text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===&apos;Enter&apos;)addAttachment('+t.id+')"></div></div>' +
     // Comments
     '<div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Comments ('+((t.comments||[]).length)+')</label>' +
     '<div class="space-y-3 mb-3">'+(t.comments||[]).map(cm => '<div class="flex gap-3'+(cm.is_internal?' bg-yellow-50 -mx-2 px-2 py-1 rounded-lg border border-yellow-200':'')+'"><div class="flex-shrink-0 mt-1">'+avatar(cm.author_name||'U','w-8 h-8 text-xs')+'</div><div class="flex-1"><div class="flex items-center gap-2"><span class="text-sm font-semibold">'+esc(cm.author_name)+'</span>'+(cm.is_internal?'<span class="text-xs bg-yellow-200 text-yellow-800 px-1.5 rounded">Internal</span>':'')+'<span class="text-xs text-gray-400">'+timeAgo(cm.created_at)+'</span></div><div class="text-sm text-gray-700 mt-1">'+esc(cm.content)+'</div></div></div>').join('')+'</div>' +
@@ -505,7 +506,7 @@ function renderProjectsPage() {
     '<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">' +
     S.projects.map(p => {
       const pct = p.task_count > 0 ? Math.round((p.done_count / p.task_count) * 100) : 0;
-      return '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="S.filters.project_id=\''+p.id+'\';navigate(\'tasks\')">' +
+      return '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="S.filters.project_id=&apos;'+p.id+'&apos;;navigate(&apos;tasks&apos;)">' +
         '<div class="flex items-center gap-3 mb-3"><div class="w-3 h-3 rounded-full" style="background:'+esc(p.color||'#6366f1')+'"></div><h3 class="font-bold text-gray-800">'+esc(p.name)+'</h3><span class="ml-auto status-badge '+statusColor(p.status === 'active' ? 'in_progress' : p.status === 'completed' ? 'done' : 'todo')+'">'+esc(p.status)+'</span></div>' +
         (p.client_name ? '<div class="text-sm text-gray-500 mb-3"><i class="fas fa-building mr-1"></i>'+esc(p.client_name)+'</div>' : '') +
         (p.description ? '<p class="text-sm text-gray-600 mb-3 line-clamp-2">'+esc(p.description)+'</p>' : '') +
@@ -522,7 +523,7 @@ function showProjectForm(project = null) {
     '<textarea name="description" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Description">'+esc(project?.description||'')+'</textarea>' +
     '<select name="client_id" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">No client</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(project?.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select>' +
     '<input type="color" name="color" value="'+(project?.color||'#6366f1')+'" class="w-12 h-10 border rounded cursor-pointer">' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(\'.modal-overlay\').remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Save</button></div></form></div></div>';
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Save</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -545,7 +546,7 @@ function renderClientsPage() {
       '<div class="flex items-center gap-4 text-xs"><span class="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">'+cl.project_count+' projects</span><span class="bg-amber-50 text-amber-700 px-2 py-1 rounded-full">'+cl.open_task_count+' open tasks</span>' +
       '<span class="ml-auto '+(cl.portal_access?'text-green-500':'text-gray-400')+'" title="Portal access"><i class="fas fa-'+(cl.portal_access?'check-circle':'times-circle')+'"></i></span>' +
       '</div>' +
-      '<div class="mt-3 flex gap-2"><button onclick="S.filters.client_id=\''+cl.id+'\';navigate(\'tasks\')" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button><button onclick="showClientForm('+cl.id+')" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button></div></div>'
+      '<div class="mt-3 flex gap-2"><button onclick="S.filters.client_id=&apos;'+cl.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button><button onclick="showClientForm('+cl.id+')" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button></div></div>'
     ).join('') +
     (S.clients.length === 0 ? '<div class="col-span-full bg-white rounded-xl border p-12 text-center"><i class="fas fa-building text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">No clients yet</p></div>' : '') +
     '</div>';
@@ -561,7 +562,7 @@ function showClientForm(clientId = null) {
     '<input type="tel" name="phone" value="'+esc(cl?.phone||'')+'" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Phone">' +
     '<input type="text" name="password" value="" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="'+(cl?'New password (leave blank to keep)':'Portal password')+'">' +
     '<input type="color" name="color" value="'+(cl?.color||'#6366f1')+'" class="w-12 h-10 border rounded cursor-pointer">' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(\'.modal-overlay\').remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Save</button></div></form></div></div>';
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Save</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -583,7 +584,7 @@ function renderTeamPage() {
       '<div class="flex items-center gap-3 mb-3">'+avatar(u.name, 'w-12 h-12 text-lg')+'<div><h3 class="font-bold text-gray-800">'+esc(u.name)+'</h3><div class="text-sm text-gray-500">'+esc(u.email)+'</div></div></div>' +
       '<div class="flex items-center gap-2 mb-3"><span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full capitalize">'+esc(u.role)+'</span>'+(u.department?'<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">'+esc(u.department)+'</span>':'')+'</div>' +
       '<div class="flex items-center gap-4 text-sm"><span class="text-gray-600"><i class="fas fa-tasks text-gray-400 mr-1"></i>'+u.open_tasks+' open tasks</span>' +
-      '<button onclick="S.filters.assigned_to=\''+u.id+'\';navigate(\'tasks\')" class="text-indigo-600 hover:text-indigo-800 ml-auto text-xs"><i class="fas fa-eye mr-1"></i>View Tasks</button></div></div>'
+      '<button onclick="S.filters.assigned_to=&apos;'+u.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-indigo-600 hover:text-indigo-800 ml-auto text-xs"><i class="fas fa-eye mr-1"></i>View Tasks</button></div></div>'
     ).join('') + '</div>';
 }
 
@@ -594,7 +595,7 @@ function showUserForm() {
     '<select name="role" class="w-full text-sm border rounded-lg px-3 py-2"><option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option></select>' +
     '<input type="text" name="department" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Department">' +
     '<input type="text" name="password" value="changeme123" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Password">' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(\'.modal-overlay\').remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Add Member</button></div></form></div></div>';
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Add Member</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -624,7 +625,7 @@ function showProcessForm() {
     '<input type="text" name="name" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Process name">' +
     '<textarea name="description" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Description"></textarea>' +
     '<div><label class="text-sm font-medium mb-2 block">Steps</label><div id="processSteps" class="space-y-2"></div><button type="button" onclick="addProcessStep()" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800"><i class="fas fa-plus mr-1"></i>Add Step</button></div>' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(\'.modal-overlay\').remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create</button></div></form></div></div>';
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
   addProcessStep();
 }
@@ -653,7 +654,7 @@ async function applyProcess(processId) {
     '<select name="project_id" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Select Project</option>'+S.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select>' +
     '<select name="client_id" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Select Client</option>'+S.clients.map(c=>'<option value="'+c.id+'">'+esc(c.company_name)+'</option>').join('')+'</select>' +
     '<div><label class="text-sm font-medium mb-1 block">Base Due Date</label><input type="date" name="base_due_date" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
-    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(\'.modal-overlay\').remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create Tasks</button></div></form></div></div>';
+    '<div class="flex justify-end gap-3"><button type="button" onclick="this.closest(&apos;.modal-overlay&apos;).remove()" class="px-4 py-2 border rounded-lg text-sm">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Create Tasks</button></div></form></div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -730,16 +731,16 @@ function renderGmailSetupPage() {
     '<div class="flex gap-3"><div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0"><span class="text-red-600 font-bold">3</span></div><div><strong>Or use the API directly</strong> - integrate with Zapier, Google Apps Script, or any automation tool to automatically create tasks from emails.</div></div></div></div>' +
     // API Key section
     '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-key text-amber-500 mr-2"></i>Your API Key</h3>' +
-    '<div id="apiKeySection"><button onclick="generateApiKey()" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700"><i class="fas fa-sync mr-1"></i>Generate New API Key</button><div id="apiKeyDisplay" class="mt-3 hidden"><div class="bg-gray-50 border rounded-lg p-3"><code id="apiKeyValue" class="text-sm text-indigo-600 break-all"></code></div><p class="text-xs text-red-500 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Save this key! It won\'t be shown again.</p></div></div></div>' +
+    '<div id="apiKeySection"><button onclick="generateApiKey()" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700"><i class="fas fa-sync mr-1"></i>Generate New API Key</button><div id="apiKeyDisplay" class="mt-3 hidden"><div class="bg-gray-50 border rounded-lg p-3"><code id="apiKeyValue" class="text-sm text-indigo-600 break-all"></code></div><p class="text-xs text-red-500 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>Save this key! It won&apos;t be shown again.</p></div></div></div>' +
     // Bookmarklet
     '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-bookmark text-blue-500 mr-2"></i>Gmail Bookmarklet</h3>' +
     '<p class="text-sm text-gray-600 mb-3">Drag this button to your bookmarks bar, then click it while viewing a Gmail email:</p>' +
     '<div class="bg-gray-100 rounded-lg p-4 text-center"><a id="bookmarklet" href="#" class="inline-block bg-red-500 text-white px-6 py-3 rounded-lg font-bold text-sm hover:bg-red-600 cursor-move no-underline"><i class="fab fa-google mr-2"></i>Add to FlexBiz</a><p class="text-xs text-gray-500 mt-2">Drag me to your bookmarks bar</p></div></div>' +
     // API docs
     '<div class="bg-white rounded-xl shadow-sm border p-6"><h3 class="font-bold mb-3"><i class="fas fa-code text-green-500 mr-2"></i>API Endpoint</h3>' +
-    '<div class="bg-gray-900 rounded-lg p-4 text-sm font-mono text-green-400 overflow-x-auto"><pre>POST ' + window.location.origin + '/api/tasks/email-add\n\nHeaders:\n  X-API-Key: your_api_key_here\n  Content-Type: application/json\n\nBody:\n{\n  "subject": "Email subject → task title",\n  "body": "Email body → task description",\n  "from": "sender@email.com",\n  "client_id": 1,  // optional\n  "project_id": 1  // optional\n}</pre></div>' +
+    '<div class="bg-gray-900 rounded-lg p-4 text-sm font-mono text-green-400 overflow-x-auto"><pre id="apiEndpointPre"></pre></div>' +
     '<div class="mt-4"><h4 class="font-semibold text-sm mb-2">Google Apps Script Example:</h4>' +
-    '<div class="bg-gray-900 rounded-lg p-4 text-sm font-mono text-blue-400 overflow-x-auto"><pre>function createTaskFromEmail() {\n  const thread = GmailApp.getInboxThreads(0,1)[0];\n  const msg = thread.getMessages()[0];\n  UrlFetchApp.fetch("' + window.location.origin + '/api/tasks/email-add", {\n    method: "POST",\n    headers: {\n      "X-API-Key": "YOUR_KEY",\n      "Content-Type": "application/json"\n    },\n    payload: JSON.stringify({\n      subject: msg.getSubject(),\n      body: msg.getPlainBody().substring(0, 500),\n      from: msg.getFrom()\n    })\n  });\n}</pre></div></div></div></div>';
+    '<div class="bg-gray-900 rounded-lg p-4 text-sm font-mono text-blue-400 overflow-x-auto"><pre id="gasExamplePre"></pre></div></div></div></div>';
 }
 
 async function generateApiKey() {
@@ -756,6 +757,16 @@ async function generateApiKey() {
 
 // ==================== EVENT BINDINGS ====================
 function bindEvents() {
+  // Populate code blocks on Gmail setup page
+  var apiPre = document.getElementById('apiEndpointPre');
+  if (apiPre) {
+    apiPre.textContent = 'POST ' + window.location.origin + '/api/tasks/email-add\\n\\nHeaders:\\n  X-API-Key: your_api_key_here\\n  Content-Type: application/json\\n\\nBody:\\n{\\n  "subject": "Email subject -> task title",\\n  "body": "Email body -> task description",\\n  "from": "sender@email.com",\\n  "client_id": 1,  // optional\\n  "project_id": 1  // optional\\n}';
+  }
+  var gasPre = document.getElementById('gasExamplePre');
+  if (gasPre) {
+    gasPre.textContent = 'function createTaskFromEmail() {\\n  const thread = GmailApp.getInboxThreads(0,1)[0];\\n  const msg = thread.getMessages()[0];\\n  UrlFetchApp.fetch("' + window.location.origin + '/api/tasks/email-add", {\\n    method: "POST",\\n    headers: {\\n      "X-API-Key": "YOUR_KEY",\\n      "Content-Type": "application/json"\\n    },\\n    payload: JSON.stringify({\\n      subject: msg.getSubject(),\\n      body: msg.getPlainBody().substring(0, 500),\\n      from: msg.getFrom()\\n    })\\n  });\\n}';
+  }
+
   const form = document.getElementById('newTaskForm');
   if (form) {
     form.onsubmit = async (e) => {

@@ -17,6 +17,11 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('*', cors())
 
+// Serve favicon
+const FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#6366f1"/><text x="50" y="68" font-size="50" fill="white" text-anchor="middle" font-family="Arial" font-weight="bold">F</text></svg>'
+app.get('/favicon.svg', (c) => new Response(FAVICON_SVG, { headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' } }))
+app.get('/favicon.ico', (c) => new Response(FAVICON_SVG, { headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' } }))
+
 // Auth routes
 app.route('/auth', authRoutes)
 
