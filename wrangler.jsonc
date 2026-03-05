@@ -1,14 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "webapp",
+  "name": "flexbiz-tasks",
   "compatibility_date": "2026-03-05",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "webapp-production",
-      "database_id": "local-dev-placeholder"
+      "database_name": "flexbiz-tasks-production",
+      "database_id": "2f52bb49-27b2-4f96-989d-62ed24c7198f"
     }
   ]
 }

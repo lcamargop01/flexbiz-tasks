@@ -6,8 +6,9 @@
 - **Goal**: Monday.com-style task management platform with client portal, Gmail integration, and Apple Reminders sync
 - **Stack**: Hono + TypeScript + Cloudflare Pages + D1 Database + Tailwind CSS
 
-## Live URL
-- **Application**: https://3000-i78b84joeftjm66z7eurf-5185f4aa.sandbox.novita.ai
+## Live URLs
+- **Production**: https://flexbiz-tasks.pages.dev
+- **Sandbox (dev)**: https://3000-i78b84joeftjm66z7eurf-5185f4aa.sandbox.novita.ai
 
 ## Features
 
@@ -142,5 +143,6 @@
 ## Deployment
 - **Platform**: Cloudflare Pages
 - **Tech Stack**: Hono + TypeScript + D1 + Tailwind CSS (CDN)
-- **Status**: Active (Development)
+- **Cloudflare Project**: flexbiz-tasks
+- **Status**: ✅ Active (Production)
 - **Last Updated**: 2026-03-05
