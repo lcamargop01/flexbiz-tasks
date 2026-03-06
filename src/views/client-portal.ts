@@ -472,7 +472,7 @@ async function addComment(taskId) {
 async function uploadFile(taskId, input) {
   if (!input.files || !input.files[0]) return;
   var file = input.files[0];
-  if (file.size > 25 * 1024 * 1024) { alert('File too large. Maximum 25MB.'); input.value = ''; return; }
+  if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); input.value = ''; return; }
   var prog = document.getElementById('uploadProgress');
   if (prog) prog.classList.remove('hidden');
   try {

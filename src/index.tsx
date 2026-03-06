@@ -37,16 +37,37 @@ app.route('/cal', calendarRoutes)
 // Public file download (no auth required, files are accessed by direct ID)
 app.get('/files/:id', async (c) => {
   const id = parseInt(c.req.param('id'))
-  // Ensure file_data column exists
-  try { await c.env.DB.prepare("SELECT file_data FROM attachments LIMIT 0").all() } catch { return c.json({ error: 'Not available' }, 404) }
+  try { await c.env.DB.prepare("SELECT file_data, storage_type FROM attachments LIMIT 0").all() } catch { return c.json({ error: 'Not available' }, 404) }
   const att = await c.env.DB.prepare(
-    'SELECT filename, mime_type, file_data FROM attachments WHERE id = ?'
+    'SELECT filename, mime_type, file_data, storage_type FROM attachments WHERE id = ?'
   ).bind(id).first() as any
-  if (!att || !att.file_data) return c.json({ error: 'File not found' }, 404)
-  const binary = atob(att.file_data)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return new Response(bytes.buffer, {
+  if (!att) return c.json({ error: 'File not found' }, 404)
+
+  function b64toBytes(b64: string): Uint8Array {
+    const binary = atob(b64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes
+  }
+
+  let finalBytes: Uint8Array
+  if (att.storage_type === 'chunked') {
+    try { await c.env.DB.prepare("SELECT id FROM file_chunks LIMIT 0").all() } catch { return c.json({ error: 'Not available' }, 404) }
+    const chunks = await c.env.DB.prepare(
+      'SELECT data FROM file_chunks WHERE attachment_id = ? ORDER BY chunk_index ASC'
+    ).bind(id).all()
+    if (!chunks.results || chunks.results.length === 0) return c.json({ error: 'File data not found' }, 404)
+    const decodedChunks: Uint8Array[] = chunks.results.map((ch: any) => b64toBytes(ch.data))
+    const totalLen = decodedChunks.reduce((sum, c) => sum + c.length, 0)
+    finalBytes = new Uint8Array(totalLen)
+    let offset = 0
+    for (const chunk of decodedChunks) { finalBytes.set(chunk, offset); offset += chunk.length }
+  } else {
+    if (!att.file_data) return c.json({ error: 'File not found' }, 404)
+    finalBytes = b64toBytes(att.file_data)
+  }
+
+  return new Response(finalBytes.buffer, {
     headers: {
       'Content-Type': att.mime_type || 'application/octet-stream',
       'Content-Disposition': 'inline; filename="' + (att.filename || 'file') + '"',

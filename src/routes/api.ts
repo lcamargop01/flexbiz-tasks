@@ -1105,57 +1105,102 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
 
 // ==================== ATTACHMENTS ====================
 
-// Ensure file_data column exists (runs once, idempotent)
-async function ensureFileDataColumn(db: D1Database) {
-  try {
-    await db.prepare("SELECT file_data FROM attachments LIMIT 0").all()
-  } catch {
+// Ensure schema is ready for file storage
+async function ensureFileSchema(db: D1Database) {
+  // Ensure file_data column exists on attachments
+  try { await db.prepare("SELECT file_data FROM attachments LIMIT 0").all() } catch {
     await db.prepare("ALTER TABLE attachments ADD COLUMN file_data TEXT").run()
+  }
+  // Ensure storage_type column exists
+  try { await db.prepare("SELECT storage_type FROM attachments LIMIT 0").all() } catch {
+    await db.prepare("ALTER TABLE attachments ADD COLUMN storage_type TEXT DEFAULT 'inline'").run()
+  }
+  // Ensure file_chunks table exists
+  try { await db.prepare("SELECT id FROM file_chunks LIMIT 0").all() } catch {
+    await db.prepare(`CREATE TABLE IF NOT EXISTS file_chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      attachment_id INTEGER NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE
+    )`).run()
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_file_chunks_attachment ON file_chunks(attachment_id, chunk_index)").run()
   }
 }
 
-// Legacy: add attachment by URL
+// Max chunk size: ~750KB of base64 data per row (well under D1's 1MB row limit)
+const CHUNK_SIZE_BYTES = 560000  // raw bytes -> ~750KB base64
+
+// Upload attachment
 apiRoutes.post('/tasks/:id/attachments', async (c) => {
   const taskId = parseInt(c.req.param('id'))
   const contentType = c.req.header('Content-Type') || ''
 
   // Handle file upload (multipart/form-data)
   if (contentType.includes('multipart/form-data')) {
-    await ensureFileDataColumn(c.env.DB)
+    await ensureFileSchema(c.env.DB)
     const formData = await c.req.formData()
     const file = formData.get('file') as File | null
     if (!file || !(file instanceof File)) {
       return c.json({ error: 'No file provided' }, 400)
     }
 
-    // Limit to 25MB
-    if (file.size > 25 * 1024 * 1024) {
-      return c.json({ error: 'File too large. Maximum 25MB.' }, 400)
+    // Limit to 10MB (safe for D1 chunked storage)
+    if (file.size > 10 * 1024 * 1024) {
+      return c.json({ error: 'File too large. Maximum 10MB.' }, 400)
     }
 
     const uploaderType = c.get('userType') === 'client' ? 'client' : 'user'
     const arrayBuf = await file.arrayBuffer()
     const bytes = new Uint8Array(arrayBuf)
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i])
+
+    // Convert to base64 in chunks to avoid memory issues
+    function uint8ToBase64(u8: Uint8Array): string {
+      let binary = ''
+      const chunkLen = 8192
+      for (let i = 0; i < u8.length; i += chunkLen) {
+        const slice = u8.subarray(i, Math.min(i + chunkLen, u8.length))
+        for (let j = 0; j < slice.length; j++) {
+          binary += String.fromCharCode(slice[j])
+        }
+      }
+      return btoa(binary)
     }
-    const base64 = btoa(binary)
 
-    const result = await c.env.DB.prepare(
-      'INSERT INTO attachments (task_id, filename, file_url, file_size, mime_type, uploaded_by, uploaded_by_type, file_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
-      taskId, file.name, '/api/attachments/{id}/download',
-      file.size, file.type || 'application/octet-stream',
-      c.get('entityId'), uploaderType, base64
-    ).run()
+    try {
+      // Insert attachment record first (without file_data)
+      const result = await c.env.DB.prepare(
+        'INSERT INTO attachments (task_id, filename, file_url, file_size, mime_type, uploaded_by, uploaded_by_type, storage_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(
+        taskId, file.name, 'pending',
+        file.size, file.type || 'application/octet-stream',
+        c.get('entityId'), uploaderType, 'chunked'
+      ).run()
 
-    const attachId = result.meta.last_row_id
-    // Update file_url with actual ID
-    await c.env.DB.prepare('UPDATE attachments SET file_url = ? WHERE id = ?')
-      .bind('/api/attachments/' + attachId + '/download', attachId).run()
+      const attachId = result.meta.last_row_id
 
-    return c.json({ id: attachId, filename: file.name, file_url: '/api/attachments/' + attachId + '/download' }, 201)
+      // Split file into chunks and store each
+      let chunkIndex = 0
+      for (let offset = 0; offset < bytes.length; offset += CHUNK_SIZE_BYTES) {
+        const chunkBytes = bytes.subarray(offset, Math.min(offset + CHUNK_SIZE_BYTES, bytes.length))
+        const chunkBase64 = uint8ToBase64(chunkBytes)
+        await c.env.DB.prepare(
+          'INSERT INTO file_chunks (attachment_id, chunk_index, data) VALUES (?, ?, ?)'
+        ).bind(attachId, chunkIndex, chunkBase64).run()
+        chunkIndex++
+      }
+
+      // Update file_url with download path
+      const downloadUrl = '/api/attachments/' + attachId + '/download'
+      await c.env.DB.prepare('UPDATE attachments SET file_url = ? WHERE id = ?')
+        .bind(downloadUrl, attachId).run()
+
+      return c.json({ id: attachId, filename: file.name, file_url: downloadUrl }, 201)
+    } catch (err: any) {
+      // Clean up partial upload
+      return c.json({ error: 'Upload failed: ' + (err.message || 'Unknown error') }, 500)
+    }
   }
 
   // Fallback: JSON body with URL reference
@@ -1169,25 +1214,57 @@ apiRoutes.post('/tasks/:id/attachments', async (c) => {
   return c.json({ id: result.meta.last_row_id }, 201)
 })
 
-// Download attachment file
+// Download attachment file (reassemble from chunks)
 apiRoutes.get('/attachments/:id/download', async (c) => {
   const id = parseInt(c.req.param('id'))
-  await ensureFileDataColumn(c.env.DB)
+  await ensureFileSchema(c.env.DB)
+
   const att = await c.env.DB.prepare(
-    'SELECT filename, mime_type, file_data FROM attachments WHERE id = ?'
+    'SELECT filename, mime_type, file_data, storage_type, file_size FROM attachments WHERE id = ?'
   ).bind(id).first() as any
 
-  if (!att || !att.file_data) {
-    return c.json({ error: 'File not found' }, 404)
+  if (!att) return c.json({ error: 'Attachment not found' }, 404)
+
+  // Helper: decode base64 to Uint8Array
+  function b64toBytes(b64: string): Uint8Array {
+    const binary = atob(b64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
   }
 
-  const binary = atob(att.file_data)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
+  let finalBytes: Uint8Array
+
+  if (att.storage_type === 'chunked') {
+    // Decode each chunk separately to avoid memory limits on large base64 strings
+    const chunks = await c.env.DB.prepare(
+      'SELECT data FROM file_chunks WHERE attachment_id = ? ORDER BY chunk_index ASC'
+    ).bind(id).all()
+
+    if (!chunks.results || chunks.results.length === 0) {
+      return c.json({ error: 'File data not found' }, 404)
+    }
+
+    // Decode each chunk into a Uint8Array
+    const decodedChunks: Uint8Array[] = chunks.results.map((ch: any) => b64toBytes(ch.data))
+
+    // Calculate total length and merge
+    const totalLen = decodedChunks.reduce((sum, c) => sum + c.length, 0)
+    finalBytes = new Uint8Array(totalLen)
+    let offset = 0
+    for (const chunk of decodedChunks) {
+      finalBytes.set(chunk, offset)
+      offset += chunk.length
+    }
+  } else {
+    // Legacy inline storage
+    if (!att.file_data) return c.json({ error: 'File not found' }, 404)
+    finalBytes = b64toBytes(att.file_data)
   }
 
-  return new Response(bytes.buffer, {
+  return new Response(finalBytes.buffer, {
     headers: {
       'Content-Type': att.mime_type || 'application/octet-stream',
       'Content-Disposition': 'inline; filename="' + (att.filename || 'file') + '"',
@@ -1196,7 +1273,11 @@ apiRoutes.get('/attachments/:id/download', async (c) => {
   })
 })
 
+// Delete attachment (chunks auto-deleted via CASCADE or manual cleanup)
 apiRoutes.delete('/attachments/:id', async (c) => {
-  await c.env.DB.prepare('DELETE FROM attachments WHERE id = ?').bind(parseInt(c.req.param('id'))).run()
+  const id = parseInt(c.req.param('id'))
+  // Delete chunks first (in case CASCADE isn't set up)
+  await c.env.DB.prepare('DELETE FROM file_chunks WHERE attachment_id = ?').bind(id).run()
+  await c.env.DB.prepare('DELETE FROM attachments WHERE id = ?').bind(id).run()
   return c.json({ success: true })
 })
