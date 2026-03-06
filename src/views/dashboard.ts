@@ -81,6 +81,7 @@ const S = {
   calTasks: [], calUnscheduled: [], calLoading: false,
   agendaShowDone: false,
   newTaskDate: null, // pre-filled due date when clicking a calendar date
+  dashClientFilter: '', // client filter for dashboard views (admin/manager only)
 };
 
 // ==================== API ====================
@@ -105,7 +106,8 @@ const API = {
 
 // ==================== DATA LOADING ====================
 async function loadDashboard() {
-  const data = await API.get('/api/dashboard');
+  const q = S.dashClientFilter ? '?client_id=' + S.dashClientFilter : '';
+  const data = await API.get('/api/dashboard' + q);
   if (data) S.dashboard = data;
 }
 
@@ -114,7 +116,9 @@ async function loadCalendarTasks() {
   // Load 3 months of data centered on current month for smooth navigation
   const start = new Date(S.calYear, S.calMonth - 1, 1).toISOString().split('T')[0];
   const end = new Date(S.calYear, S.calMonth + 2, 0).toISOString().split('T')[0];
-  const data = await API.get('/api/dashboard/calendar?start=' + start + '&end=' + end);
+  var calUrl = '/api/dashboard/calendar?start=' + start + '&end=' + end;
+  if (S.dashClientFilter) calUrl += '&client_id=' + S.dashClientFilter;
+  const data = await API.get(calUrl);
   if (data) { S.calTasks = data.tasks || []; S.calUnscheduled = data.unscheduled || []; }
   S.calLoading = false;
 }
@@ -328,7 +332,12 @@ function renderDashboardPage() {
     '<button onclick="setDashView(&apos;calendar&apos;)" class="px-3 py-2 text-sm flex items-center gap-1.5 '+(S.dashView==='calendar'?'bg-indigo-100 text-indigo-700 font-semibold':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-calendar-alt"></i><span class="hidden sm:inline">Calendar</span></button>' +
     '<button onclick="setDashView(&apos;stats&apos;)" class="px-3 py-2 text-sm flex items-center gap-1.5 '+(S.dashView==='stats'?'bg-indigo-100 text-indigo-700 font-semibold':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-chart-bar"></i><span class="hidden sm:inline">Stats</span></button>' +
     '</div>' +
-    '<div class="ml-auto flex gap-2">' +
+    '<div class="ml-auto flex gap-2 items-center">' +
+    ((S.user?.role === 'admin' || S.user?.role === 'manager') ?
+      '<select onchange="S.dashClientFilter=this.value;Promise.all([loadDashboard(),loadCalendarTasks()]).then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white max-w-[180px]">' +
+      '<option value="">All Clients</option>' +
+      S.clients.map(function(c){return '<option value="'+c.id+'"'+(S.dashClientFilter==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>';}).join('') +
+      '</select>' : '') +
     '<button onclick="S.showNewTaskModal=true;S.newTaskDate=null;render()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2"><i class="fas fa-plus"></i><span class="hidden sm:inline">New Task</span></button>' +
     '</div></div>';
 

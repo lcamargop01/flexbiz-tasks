@@ -1068,18 +1068,23 @@ apiRoutes.get('/dashboard', async (c) => {
   const myFilter = ' AND (id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR created_by = ' + uid + ')'
   const myFilterAlias = ' AND (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR t.created_by = ' + uid + ')'
 
+  // Optional client filter for admin/manager dashboard
+  const clientFilter = c.req.query('client_id')
+  const clientWhere = clientFilter ? ' AND client_id = ' + parseInt(clientFilter) : ''
+  const clientWhereAlias = clientFilter ? ' AND t.client_id = ' + parseInt(clientFilter) : ''
+
   const [tasksByStatus, tasksByPriority, overdueTasks, dueSoonTasks, myTasks, recentActivity] = await Promise.all([
-    c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE parent_task_id IS NULL' + myFilter + ' GROUP BY status').all(),
-    c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL' + myFilter + ' GROUP BY priority').all(),
-    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")' + myFilter).first(),
-    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")' + myFilter).first(),
+    c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE parent_task_id IS NULL' + myFilter + clientWhere + ' GROUP BY status').all(),
+    c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL' + myFilter + clientWhere + ' GROUP BY priority').all(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")' + myFilter + clientWhere).first(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")' + myFilter + clientWhere).first(),
     c.env.DB.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
         (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN clients cl ON t.client_id = cl.id
-      WHERE t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled') ${myFilterAlias}
+      WHERE t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled') ${myFilterAlias} ${clientWhereAlias}
       ORDER BY t.due_date ASC NULLS LAST LIMIT 15
     `).all(),
     // Activity: all users see only activity on their assigned/created tasks
@@ -1112,6 +1117,8 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
   
   const uid = c.get('entityId')
   const isClient = c.get('userType') === 'client'
+  const clientFilter = c.req.query('client_id')
+  const clientExtra = clientFilter ? ' AND t.client_id = ' + parseInt(clientFilter) : ''
   
   let whereClause: string
   let params: any[]
@@ -1123,7 +1130,7 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
     params = [...cIds, start, end]
   } else {
     // ALL users (even admin) see only their assigned/created tasks on dashboard calendar
-    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?`
+    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?${clientExtra}`
     params = [uid, uid, start, end]
   }
 
@@ -1149,7 +1156,7 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
     noDateWhere = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
     noDateParams = [...cIds]
   } else {
-    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
+    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')${clientExtra}`
     noDateParams = [uid, uid]
   }
 
