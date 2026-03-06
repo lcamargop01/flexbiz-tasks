@@ -73,6 +73,7 @@ const S = {
   filters: { status: '', priority: '', client_id: '', project_id: '', assigned_to: '', search: '' },
   viewMode: 'list', selectedTask: null, showTaskModal: false, showNewTaskModal: false,
   sidebarOpen: false, loading: true, editingProject: null, editingClient: null, showFilters: false,
+  showQuickAdd: false, quickAddResult: null, quickAddLoading: false,
 };
 
 // ==================== API ====================
@@ -323,10 +324,107 @@ function statCard(label, value, icon, iconBg, textColor) {
 function activityIcon(a) { return {created:'plus',updated:'edit',status_changed:'exchange-alt',assigned:'user-plus',commented:'comment',file_uploaded:'paperclip'}[a]||'circle'; }
 function activityText(a) { return {created:'created',updated:'updated',status_changed:'changed status of',assigned:'was assigned to',commented:'commented on',file_uploaded:'uploaded file to'}[a.action]||a.action; }
 
+// ==================== QUICK ADD (ADMIN) ====================
+function renderAdminQuickAdd() {
+  // Success state
+  if (S.quickAddResult) {
+    return '<div class="bg-white rounded-2xl border shadow-sm p-5 md:p-6 mb-4">' +
+      '<div class="text-center py-4">' +
+      '<div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-check-circle text-green-500 text-3xl"></i></div>' +
+      '<h3 class="text-lg font-bold text-gray-800 mb-1">' + S.quickAddResult.count + ' task' + (S.quickAddResult.count !== 1 ? 's' : '') + ' created!</h3>' +
+      '<div class="max-w-md mx-auto mt-4 space-y-1 text-left">' +
+      S.quickAddResult.created.map(function(t){ return '<div class="flex items-center gap-2 p-2 rounded-lg bg-gray-50"><i class="fas fa-check text-green-500 text-xs"></i><span class="text-sm">'+esc(t.title)+'</span></div>'; }).join('') +
+      '</div>' +
+      '<div class="flex flex-col sm:flex-row gap-3 justify-center mt-6">' +
+      '<button onclick="S.quickAddResult=null;render()" class="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-2"></i>Add More Tasks</button>' +
+      '<button onclick="S.quickAddResult=null;S.showQuickAdd=false;loadTasks().then(render)" class="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg text-sm font-semibold hover:bg-gray-50"><i class="fas fa-list mr-2"></i>View Tasks</button>' +
+      '</div></div></div>';
+  }
+
+  return '<div class="bg-white rounded-2xl border shadow-sm p-5 md:p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center"><i class="fas fa-paste text-indigo-600"></i></div><div><h3 class="font-bold text-gray-800">Quick Add Tasks</h3><p class="text-xs text-gray-500">Paste a bulleted list to create multiple tasks at once</p></div>' +
+    '<button onclick="S.showQuickAdd=false;render()" class="ml-auto text-gray-400 hover:text-gray-600" style="width:36px;height:36px"><i class="fas fa-times"></i></button></div>' +
+    // Hint
+    '<div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4 text-sm text-indigo-800">' +
+    '<div class="font-semibold mb-1"><i class="fas fa-lightbulb text-indigo-500 mr-1"></i>How it works</div>' +
+    '<div class="text-xs text-indigo-700">Type or paste one task per line. Bullets, dashes, numbers, or plain text all work.<br>' +
+    '<span class="font-mono bg-indigo-100 px-1 rounded">- Call accountant about tax forms</span><br>' +
+    '<span class="font-mono bg-indigo-100 px-1 rounded">- Review contracts for client</span><br>' +
+    'Indent a line (tab or 4+ spaces) to add a description to the preceding task.</div></div>' +
+    // Textarea
+    '<div class="mb-4">' +
+    '<textarea id="qa_text" class="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-colors" rows="8" placeholder="Paste your task list here...&#10;&#10;Examples:&#10;- Review contracts for Lion MDs&#10;- File quarterly taxes&#10;    Need W2 forms from payroll&#10;- Order new office supplies" style="min-height:180px;font-size:15px !important"></textarea>' +
+    '</div>' +
+    // Options row
+    '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">' +
+    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Client</label><select id="qa_client" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">No client</option>'+S.clients.map(function(c){ return '<option value="'+c.id+'">'+esc(c.company_name)+'</option>'; }).join('')+'</select></div>' +
+    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Project</label><select id="qa_project" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">No project</option>'+S.projects.map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join('')+'</select></div>' +
+    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Assign to</label><select id="qa_assignee" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Unassigned</option>'+S.users.map(function(u){ return '<option value="'+u.id+'">'+esc(u.name)+'</option>'; }).join('')+'</select></div>' +
+    '</div>' +
+    // Submit
+    '<button onclick="submitAdminQuickAdd()" id="qa_submit" class="w-full bg-indigo-600 text-white py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"' +
+    (S.quickAddLoading ? ' disabled style="opacity:0.7"' : '') + '>' +
+    (S.quickAddLoading ? '<i class="fas fa-spinner fa-spin"></i><span>Creating tasks...</span>' : '<i class="fas fa-paper-plane"></i><span>Create Tasks</span>') +
+    '</button></div>';
+}
+
+async function submitAdminQuickAdd() {
+  var textEl = document.getElementById('qa_text');
+  if (!textEl || !textEl.value.trim()) { alert('Please paste or type your task list'); return; }
+
+  S.quickAddLoading = true; render();
+  var savedText = textEl ? textEl.value : '';
+
+  var payload = { text: savedText };
+  var clientEl = document.getElementById('qa_client');
+  if (clientEl && clientEl.value) payload.client_id = parseInt(clientEl.value);
+  var projectEl = document.getElementById('qa_project');
+  if (projectEl && projectEl.value) payload.project_id = parseInt(projectEl.value);
+  var assigneeId = null;
+  var assigneeEl = document.getElementById('qa_assignee');
+  if (assigneeEl && assigneeEl.value) assigneeId = parseInt(assigneeEl.value);
+
+  try {
+    var res = await API.post('/api/tasks/bulk', payload);
+    S.quickAddLoading = false;
+    if (res && res.created) {
+      // If an assignee was selected, assign all created tasks
+      if (assigneeId) {
+        for (var ct of res.created) {
+          await API.put('/api/tasks/' + ct.id, { assignees: [{user_id: assigneeId, role: 'assignee'}] });
+        }
+      }
+      S.quickAddResult = res;
+      await loadTasks();
+    } else {
+      alert(res && res.error ? res.error : 'Something went wrong. Please try again.');
+    }
+  } catch (e) {
+    S.quickAddLoading = false;
+    alert('Connection error. Please try again.');
+  }
+  render();
+  if (!S.quickAddResult) {
+    var el = document.getElementById('qa_text');
+    if (el) el.value = savedText;
+  }
+}
+
 // ==================== TASKS PAGE ====================
 function renderTasksPage() {
   const activeFilterCount = Object.values(S.filters).filter(v=>v).length;
-  return '<div class="mb-4 space-y-3">' +
+
+  // Quick Add section
+  const quickAddSection = S.showQuickAdd ? renderAdminQuickAdd() :
+    '<div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl border border-indigo-200 p-4 mb-4 cursor-pointer" onclick="S.showQuickAdd=true;S.quickAddResult=null;render()">' +
+    '<div class="flex items-center gap-3">' +
+    '<div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center flex-shrink-0"><i class="fas fa-paste text-white"></i></div>' +
+    '<div class="flex-1"><div class="font-semibold text-gray-800 text-sm">Quick Add Tasks</div>' +
+    '<div class="text-xs text-gray-500">Paste a bulleted list to create multiple tasks at once</div></div>' +
+    '<i class="fas fa-chevron-right text-indigo-400"></i>' +
+    '</div></div>';
+
+  return quickAddSection + '<div class="mb-4 space-y-3">' +
     // Top row: view toggle + search on mobile + count
     '<div class="flex items-center gap-2">' +
     '<div class="flex bg-white border rounded-lg overflow-hidden"><button onclick="S.viewMode=&apos;list&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='list'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list"></i><span class="hidden sm:inline ml-1">List</span></button><button onclick="S.viewMode=&apos;kanban&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='kanban'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-columns"></i><span class="hidden sm:inline ml-1">Board</span></button></div>' +
