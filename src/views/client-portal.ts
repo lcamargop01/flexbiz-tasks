@@ -58,6 +58,7 @@ export function renderClientPortal(): string {
 const CS = {
   client: null, token: null, tasks: [], projects: [], notifications: [], unreadCount: 0,
   dashboard: null, selectedTask: null, showTaskModal: false, showNewTask: false,
+  showQuickAdd: false, quickAddResult: null, quickAddLoading: false,
   filters: { status: '', project_id: '', company_id: '' }, tab: 'tasks',
   linkedCompanies: [], allClientIds: [], hasMultiCompany: false
 };
@@ -198,8 +199,107 @@ function renderClientDashboard() {
     '<div class="bg-white rounded-xl border p-6"><h3 class="font-bold mb-4">Recent Tasks</h3><div class="space-y-2">'+(d.recentTasks||[]).map(t=>'<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">'+priorityIcon(t.priority)+'<span class="text-sm flex-1">'+esc(t.title)+'</span>'+(CS.hasMultiCompany && t.client_name ? companyChip(t.client_name) : '')+'<span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>'+dueLabel(t.due_date)+'</div>').join('')+'</div></div>';
 }
 
+function renderQuickAdd() {
+  // Company picker for multi-company clients
+  let companyPicker = '';
+  if (CS.hasMultiCompany) {
+    const companies = [{id:CS.client.id, name:CS.client.company_name}, ...CS.linkedCompanies.map(c=>({id:c.id, name:c.company_name}))];
+    companyPicker = '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Company</label>' +
+      '<select id="qa_company" class="w-full text-sm border rounded-lg px-3 py-2">' +
+      companies.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('') +
+      '</select></div>';
+  }
+
+  // Success state
+  if (CS.quickAddResult) {
+    return '<div class="bg-white rounded-2xl border p-5 md:p-6 mb-4">' +
+      '<div class="text-center py-4">' +
+      '<div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-check-circle text-green-500 text-3xl"></i></div>' +
+      '<h3 class="text-lg font-bold text-gray-800 mb-1">' + CS.quickAddResult.count + ' task' + (CS.quickAddResult.count !== 1 ? 's' : '') + ' created!</h3>' +
+      '<div class="max-w-md mx-auto mt-4 space-y-1 text-left">' +
+      CS.quickAddResult.created.map(t => '<div class="flex items-center gap-2 p-2 rounded-lg bg-gray-50"><i class="fas fa-check text-green-500 text-xs"></i><span class="text-sm">'+esc(t.title)+'</span></div>').join('') +
+      '</div>' +
+      '<div class="flex flex-col sm:flex-row gap-3 justify-center mt-6">' +
+      '<button onclick="CS.quickAddResult=null;render()" class="bg-sky-600 text-white px-6 py-3 rounded-lg text-sm font-semibold hover:bg-sky-700"><i class="fas fa-plus mr-2"></i>Add More Tasks</button>' +
+      '<button onclick="CS.quickAddResult=null;CS.showQuickAdd=false;CS.tab=\'tasks\';loadTasks().then(render)" class="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg text-sm font-semibold hover:bg-gray-50"><i class="fas fa-list mr-2"></i>View Tasks</button>' +
+      '</div></div></div>';
+  }
+
+  return '<div class="bg-white rounded-2xl border p-5 md:p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center"><i class="fas fa-paste text-sky-600"></i></div><div><h3 class="font-bold text-gray-800">Quick Add Tasks</h3><p class="text-xs text-gray-500">Paste your list from Google Sheets, Notes, or just type it</p></div></div>' +
+    // Example hint
+    '<div class="bg-sky-50 border border-sky-200 rounded-xl p-3 mb-4 text-sm text-sky-800">' +
+    '<div class="font-semibold mb-1"><i class="fas fa-lightbulb text-sky-500 mr-1"></i>How it works</div>' +
+    '<div class="text-xs text-sky-700">Type or paste one task per line. Use bullets, dashes, or just plain text:<br>' +
+    '<span class="font-mono bg-sky-100 px-1 rounded">- Call accountant about tax forms</span><br>' +
+    '<span class="font-mono bg-sky-100 px-1 rounded">- Send invoice to client</span><br>' +
+    '<span class="font-mono bg-sky-100 px-1 rounded">- Schedule meeting with bank</span><br>' +
+    'Indent a line with tab/spaces to add a description to the task above it.</div></div>' +
+    // Textarea
+    '<div class="mb-4">' +
+    '<textarea id="qa_text" class="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-colors" rows="8" placeholder="Paste your task list here...\n\nExamples:\n- Review contracts for Lion MDs\n- File quarterly taxes\n    Need W2 forms from payroll\n- Order new office supplies\n- Schedule dentist appointment" style="min-height:180px;font-size:15px !important"></textarea>' +
+    '</div>' +
+    // Options row
+    '<div class="flex flex-col sm:flex-row gap-3 mb-4">' +
+    companyPicker +
+    '<div class="flex-1"><label class="text-sm font-medium text-gray-700 mb-1 block">Project (optional)</label><select id="qa_project" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">No project</option>'+CS.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div>' +
+    '</div>' +
+    // Submit
+    '<button onclick="submitQuickAdd()" id="qa_submit" class="w-full bg-sky-600 text-white py-3 rounded-xl text-sm font-bold hover:bg-sky-700 transition-colors flex items-center justify-center gap-2"' +
+    (CS.quickAddLoading ? ' disabled style="opacity:0.7"' : '') + '>' +
+    (CS.quickAddLoading ? '<i class="fas fa-spinner fa-spin"></i><span>Creating tasks...</span>' : '<i class="fas fa-paper-plane"></i><span>Create Tasks</span>') +
+    '</button>' +
+    '</div>';
+}
+
+async function submitQuickAdd() {
+  const textEl = document.getElementById('qa_text');
+  if (!textEl || !textEl.value.trim()) { alert('Please paste or type your task list'); return; }
+
+  CS.quickAddLoading = true; render();
+  // Keep text in textarea during loading
+  const savedText = textEl ? textEl.value : '';
+
+  const payload = { text: savedText };
+  const companyEl = document.getElementById('qa_company');
+  if (companyEl && companyEl.value) payload.client_id = parseInt(companyEl.value);
+  const projectEl = document.getElementById('qa_project');
+  if (projectEl && projectEl.value) payload.project_id = parseInt(projectEl.value);
+
+  try {
+    const res = await API.post('/api/tasks/bulk', payload);
+    CS.quickAddLoading = false;
+    if (res && res.created) {
+      CS.quickAddResult = res;
+      await loadTasks();
+    } else {
+      alert(res?.error || 'Something went wrong. Please try again.');
+    }
+  } catch (e) {
+    CS.quickAddLoading = false;
+    alert('Connection error. Please try again.');
+  }
+  render();
+  // Restore text if still on the form
+  if (!CS.quickAddResult) {
+    const el = document.getElementById('qa_text');
+    if (el) el.value = savedText;
+  }
+}
+
 function renderClientTasks() {
-  return '<div class="flex flex-wrap items-center gap-2 md:gap-3 mb-4">' +
+  // Quick Add section at top (always visible, collapsible)
+  const quickAddSection = CS.showQuickAdd ? renderQuickAdd() :
+    '<div class="bg-gradient-to-r from-sky-50 to-indigo-50 rounded-2xl border border-sky-200 p-4 mb-4 cursor-pointer" onclick="CS.showQuickAdd=true;CS.quickAddResult=null;render()">' +
+    '<div class="flex items-center gap-3">' +
+    '<div class="w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center flex-shrink-0"><i class="fas fa-paste text-white"></i></div>' +
+    '<div class="flex-1"><div class="font-semibold text-gray-800 text-sm">Quick Add Tasks</div>' +
+    '<div class="text-xs text-gray-500">Paste a list from Google Sheets or type tasks one per line</div></div>' +
+    '<i class="fas fa-chevron-right text-sky-400"></i>' +
+    '</div></div>';
+
+  return quickAddSection +
+    '<div class="flex flex-wrap items-center gap-2 md:gap-3 mb-4">' +
     '<select onchange="CS.filters.status=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 flex-1 md:flex-none"><option value="">All Statuses</option><option value="todo"'+(CS.filters.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(CS.filters.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(CS.filters.status==='review'?' selected':'')+'>Review</option><option value="done"'+(CS.filters.status==='done'?' selected':'')+'>Done</option></select>' +
     '<select onchange="CS.filters.project_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 flex-1 md:flex-none"><option value="">All Projects</option>'+CS.projects.map(p=>'<option value="'+p.id+'"'+(CS.filters.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>' +
     renderCompanyFilter() +

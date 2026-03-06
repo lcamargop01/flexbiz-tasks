@@ -247,6 +247,111 @@ apiRoutes.post('/tasks', async (c) => {
   return c.json({ id: taskId, title }, 201)
 })
 
+// Bulk create tasks from pasted text (bulleted list)
+apiRoutes.post('/tasks/bulk', async (c) => {
+  const body = await c.req.json()
+  const { text, client_id, project_id } = body
+
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return c.json({ error: 'Please paste a list of tasks' }, 400)
+  }
+
+  // Determine client_id: client users get their own ID (or selected company), admin can specify
+  let effectiveClientId = c.get('userType') === 'client' ? c.get('entityId') : (client_id || null)
+  // For client users who pick a specific company from their linked list
+  if (c.get('userType') === 'client' && client_id) {
+    const cIds = c.get('clientIds') || [c.get('entityId')]
+    if (cIds.includes(parseInt(client_id))) {
+      effectiveClientId = parseInt(client_id)
+    }
+  }
+
+  const createdByType = c.get('userType') === 'client' ? 'client' : 'user'
+
+  // Parse the bulleted list
+  // Supports: "• Task", "- Task", "* Task", "1. Task", "1) Task", plain "Task"
+  // If a line starts with spaces/tab after a bullet line, treat it as the description of the previous task
+  const lines = text.split(/\n/)
+  const tasks: { title: string; description: string }[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
+    // Skip completely empty lines
+    if (!raw.trim()) continue
+
+    // Check if this line is indented (description of previous task)
+    const isIndented = /^[\t]/.test(raw) || /^[ ]{4,}/.test(raw)
+    if (isIndented && tasks.length > 0) {
+      // Append as description to the previous task
+      const desc = raw.trim()
+      if (desc) {
+        tasks[tasks.length - 1].description += (tasks[tasks.length - 1].description ? '\n' : '') + desc
+      }
+      continue
+    }
+
+    // Strip common bullet prefixes
+    let title = raw.trim()
+      .replace(/^[\u2022\u2023\u25E6\u2043\u2219\u25AA\u25AB\u25CF\u25CB\u2013\u2014]\s*/, '') // unicode bullets
+      .replace(/^[-*+]\s+/, '')           // - * +
+      .replace(/^\d+[.)]\s+/, '')         // 1. or 1)
+      .replace(/^[a-zA-Z][.)]\s+/, '')    // a. or a)
+      .replace(/^\[[ x]?\]\s*/i, '')      // [ ] or [x] checkboxes
+      .trim()
+
+    if (!title) continue
+
+    // Check if next line looks like a description (indented or starting with description-like pattern)
+    let description = ''
+    if (i + 1 < lines.length) {
+      const nextRaw = lines[i + 1]
+      const nextIsIndented = /^[\t]/.test(nextRaw) || /^[ ]{4,}/.test(nextRaw)
+      if (nextIsIndented && nextRaw.trim()) {
+        description = nextRaw.trim()
+        i++ // skip description line
+        // Keep consuming consecutive indented lines
+        while (i + 1 < lines.length && (/^[\t]/.test(lines[i + 1]) || /^[ ]{4,}/.test(lines[i + 1])) && lines[i + 1].trim()) {
+          description += '\n' + lines[i + 1].trim()
+          i++
+        }
+      }
+    }
+
+    tasks.push({ title, description })
+  }
+
+  if (tasks.length === 0) {
+    return c.json({ error: 'No tasks found in the text. Try pasting a list like:\\n- Task one\\n- Task two' }, 400)
+  }
+
+  if (tasks.length > 50) {
+    return c.json({ error: 'Maximum 50 tasks at a time. You pasted ' + tasks.length + ' tasks.' }, 400)
+  }
+
+  // Insert all tasks
+  const created: { id: number; title: string }[] = []
+  for (const task of tasks) {
+    const result = await c.env.DB.prepare(`
+      INSERT INTO tasks (title, description, status, priority, project_id, client_id,
+        is_visible_to_client, created_by, created_by_type)
+      VALUES (?, ?, 'todo', 'medium', ?, ?, 1, ?, ?)
+    `).bind(
+      task.title, task.description || null, project_id || null, effectiveClientId,
+      c.get('entityId'), createdByType
+    ).run()
+
+    const taskId = result.meta.last_row_id
+    created.push({ id: taskId as number, title: task.title })
+
+    // Activity log
+    await c.env.DB.prepare(
+      'INSERT INTO activity_log (task_id, actor_id, actor_type, action, details) VALUES (?, ?, ?, ?, ?)'
+    ).bind(taskId, c.get('entityId'), createdByType, 'created', JSON.stringify({ title: task.title, source: 'bulk_paste' })).run()
+  }
+
+  return c.json({ created, count: created.length }, 201)
+})
+
 // Update task
 apiRoutes.put('/tasks/:id', async (c) => {
   const id = parseInt(c.req.param('id'))
