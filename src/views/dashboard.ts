@@ -75,6 +75,12 @@ const S = {
   sidebarOpen: false, loading: true, editingProject: null, editingClient: null, showFilters: false,
   showQuickAdd: false, quickAddResult: null, quickAddLoading: false,
   sort: 'due_date', hideDone: true,
+  // Dashboard view state
+  dashView: localStorage.getItem('flexbiz_dashView') || 'agenda',  // 'agenda' | 'calendar' | 'stats'
+  calMonth: new Date().getMonth(), calYear: new Date().getFullYear(),
+  calTasks: [], calUnscheduled: [], calLoading: false,
+  agendaShowDone: false,
+  newTaskDate: null, // pre-filled due date when clicking a calendar date
 };
 
 // ==================== API ====================
@@ -101,6 +107,16 @@ const API = {
 async function loadDashboard() {
   const data = await API.get('/api/dashboard');
   if (data) S.dashboard = data;
+}
+
+async function loadCalendarTasks() {
+  S.calLoading = true;
+  // Load 3 months of data centered on current month for smooth navigation
+  const start = new Date(S.calYear, S.calMonth - 1, 1).toISOString().split('T')[0];
+  const end = new Date(S.calYear, S.calMonth + 2, 0).toISOString().split('T')[0];
+  const data = await API.get('/api/dashboard/calendar?start=' + start + '&end=' + end);
+  if (data) { S.calTasks = data.tasks || []; S.calUnscheduled = data.unscheduled || []; }
+  S.calLoading = false;
 }
 
 async function loadTasks() {
@@ -170,7 +186,7 @@ async function init() {
 
   S.loading = true; render();
   const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
-  const loads = [loadDashboard(), loadTasks(), loadProjects(), loadNotifications()];
+  const loads = [loadDashboard(), loadTasks(), loadProjects(), loadNotifications(), loadCalendarTasks()];
   if (isAdmin) { loads.push(loadClients(), loadUsers(), loadProcesses()); } else { loads.push(loadUsers()); }
   await Promise.all(loads);
   S.loading = false; render();
@@ -305,6 +321,254 @@ function renderPage() {
 
 // ==================== DASHBOARD ====================
 function renderDashboardPage() {
+  // View toggle buttons
+  const viewToggle = '<div class="flex items-center gap-2 mb-4 flex-wrap">' +
+    '<div class="flex bg-white border rounded-lg overflow-hidden shadow-sm">' +
+    '<button onclick="setDashView(&apos;agenda&apos;)" class="px-3 py-2 text-sm flex items-center gap-1.5 '+(S.dashView==='agenda'?'bg-indigo-100 text-indigo-700 font-semibold':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list-ul"></i><span class="hidden sm:inline">Agenda</span></button>' +
+    '<button onclick="setDashView(&apos;calendar&apos;)" class="px-3 py-2 text-sm flex items-center gap-1.5 '+(S.dashView==='calendar'?'bg-indigo-100 text-indigo-700 font-semibold':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-calendar-alt"></i><span class="hidden sm:inline">Calendar</span></button>' +
+    '<button onclick="setDashView(&apos;stats&apos;)" class="px-3 py-2 text-sm flex items-center gap-1.5 '+(S.dashView==='stats'?'bg-indigo-100 text-indigo-700 font-semibold':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-chart-bar"></i><span class="hidden sm:inline">Stats</span></button>' +
+    '</div>' +
+    '<div class="ml-auto flex gap-2">' +
+    '<button onclick="S.showNewTaskModal=true;S.newTaskDate=null;render()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2"><i class="fas fa-plus"></i><span class="hidden sm:inline">New Task</span></button>' +
+    '</div></div>';
+
+  if (S.dashView === 'agenda') return viewToggle + renderAgendaView();
+  if (S.dashView === 'calendar') return viewToggle + renderCalendarView();
+  return viewToggle + renderStatsView();
+}
+
+function setDashView(v) {
+  S.dashView = v;
+  localStorage.setItem('flexbiz_dashView', v);
+  if (v === 'calendar' || v === 'agenda') { loadCalendarTasks().then(render); }
+  render();
+}
+
+// ==================== AGENDA VIEW (Google Calendar-style) ====================
+function renderAgendaView() {
+  const tasks = S.calTasks || [];
+  const grouped = {};
+  tasks.forEach(function(t) {
+    const d = t.due_date ? t.due_date.split('T')[0] : 'unscheduled';
+    if (!grouped[d]) grouped[d] = [];
+    grouped[d].push(t);
+  });
+  if ((S.calUnscheduled || []).length > 0) {
+    grouped['unscheduled'] = S.calUnscheduled;
+  }
+
+  const dates = Object.keys(grouped).filter(d => d !== 'unscheduled').sort();
+  const today = new Date().toISOString().split('T')[0];
+
+  const toggleDone = '<div class="flex items-center gap-3 mb-4">' +
+    '<button onclick="S.agendaShowDone=!S.agendaShowDone;loadCalendarTasks().then(render)" class="flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs '+(S.agendaShowDone?'bg-green-50 border-green-300 text-green-700':'bg-white text-gray-500')+'">' +
+    '<i class="fas fa-'+(S.agendaShowDone?'eye':'eye-slash')+'"></i> '+(S.agendaShowDone?'Showing completed':'Done hidden')+'</button>' +
+    '<span class="text-xs text-gray-400">'+tasks.length+' tasks with due dates</span></div>';
+
+  if (dates.length === 0 && !(grouped['unscheduled']||[]).length) {
+    return toggleDone + '<div class="bg-white rounded-xl border p-12 text-center"><i class="fas fa-calendar-check text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">No tasks scheduled</p><p class="text-gray-400 text-sm mt-1">Click \u201cNew Task\u201d to add one with a due date</p></div>';
+  }
+
+  let html = toggleDone + '<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">';
+
+  dates.forEach(function(date, idx) {
+    const dt = new Date(date + 'T12:00:00');
+    const isToday = date === today;
+    const isPast = date < today;
+    const dayName = dt.toLocaleDateString('en-US', {weekday:'short'}).toUpperCase();
+    const monthName = dt.toLocaleDateString('en-US', {month:'short'}).toUpperCase();
+    const dayNum = dt.getDate();
+    const allDateTasks = grouped[date];
+    const dateTasks = allDateTasks.filter(function(t) { return S.agendaShowDone || (t.status !== 'done' && t.status !== 'cancelled'); });
+    const pendingCount = allDateTasks.filter(function(t) { return t.status !== 'done' && t.status !== 'cancelled'; }).length;
+    const doneCount = allDateTasks.filter(function(t) { return t.status === 'done'; }).length;
+    if (dateTasks.length === 0 && !S.agendaShowDone) return;
+
+    html += '<div class="flex items-start gap-3 md:gap-5 px-3 md:px-5 py-3 '+(idx > 0 ? 'border-t border-gray-100' : '')+' '+(isToday?'bg-indigo-50/40':'')+'">' +
+      '<div class="flex-shrink-0 w-14 md:w-16 text-center pt-0.5">' +
+      (isToday ?
+        '<div class="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center mx-auto text-white font-bold text-lg">'+dayNum+'</div>' +
+        '<div class="text-[10px] font-bold text-indigo-600 mt-0.5">'+dayName+'</div>' :
+        '<div class="text-2xl font-bold '+(isPast?'text-gray-400':'text-gray-700')+'">'+dayNum+'</div>' +
+        '<div class="text-[10px] font-semibold '+(isPast?'text-gray-400':'text-gray-500')+'">'+dayName+'</div>'
+      ) +
+      '<div class="text-[9px] text-gray-400 mt-0.5">'+monthName+'</div>' +
+      '</div>' +
+      '<div class="flex-1 min-w-0 space-y-0.5">' +
+      '<div class="flex items-center gap-2 mb-1">' +
+      (pendingCount > 0 ? '<span class="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"><i class="fas fa-clock text-[9px]"></i>'+pendingCount+' pending</span>' : '') +
+      (doneCount > 0 ? '<span class="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5"><i class="fas fa-check text-[9px]"></i>'+doneCount+' done</span>' : '') +
+      '<button onclick="addTaskOnDate(&apos;'+date+'&apos;)" class="ml-auto inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded px-1.5 py-0.5 transition-colors"><i class="fas fa-plus text-[9px]"></i>Add</button>' +
+      '</div>';
+
+    dateTasks.forEach(function(t) {
+      const isDone = t.status === 'done' || t.status === 'cancelled';
+      const prioColors = {urgent:'bg-red-500',high:'bg-orange-500',medium:'bg-blue-500',low:'bg-green-500'};
+      const dot = prioColors[t.priority] || 'bg-blue-500';
+      const assigneePrefix = t.assignee_names ? '<span class="font-semibold text-gray-500">' + esc(t.assignee_names.split(',')[0].split(' ')[0]) + '</span> \u2013 ' : '';
+
+      html += '<div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer group" onclick="loadTaskDetail('+t.id+')">' +
+        '<div class="w-2 h-2 rounded-full flex-shrink-0 '+(isDone?'bg-gray-300':dot)+'"></div>' +
+        '<button onclick="event.stopPropagation();quickStatusCal('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(isDone?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400 group-hover:border-indigo-300')+' flex items-center justify-center text-xs transition-colors" title="'+(isDone?'Mark incomplete':'Mark complete')+'">'+(isDone?'<i class="fas fa-check text-[9px]"></i>':'')+'</button>' +
+        '<div class="flex-1 min-w-0"><span class="text-sm '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+assigneePrefix+esc(t.title)+'</span>' +
+        (t.project_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.project_name)+'</span>' : '') +
+        (t.client_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.client_name)+'</span>' : '') +
+        '</div>' +
+        (isDone ? '' : '<span class="hidden sm:inline-block status-badge text-[10px] '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>') +
+        '</div>';
+    });
+
+    html += '</div></div>';
+  });
+
+  html += '</div>';
+
+  // Unscheduled section
+  if ((grouped['unscheduled']||[]).length > 0) {
+    const unschedFiltered = (grouped['unscheduled']||[]).filter(function(t) { return S.agendaShowDone || (t.status !== 'done' && t.status !== 'cancelled'); });
+    if (unschedFiltered.length > 0) {
+      html += '<div class="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-4">' +
+        '<div class="flex items-center gap-2 mb-2"><i class="fas fa-inbox text-gray-400"></i><span class="text-sm font-semibold text-gray-500">Unscheduled</span><span class="text-xs text-gray-400">('+unschedFiltered.length+')</span></div>' +
+        '<div class="space-y-0.5">';
+      unschedFiltered.forEach(function(t) {
+        const assigneePrefix = t.assignee_names ? '<span class="font-semibold text-gray-500">' + esc(t.assignee_names.split(',')[0].split(' ')[0]) + '</span> \u2013 ' : '';
+        html += '<div class="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
+          '<div class="w-2 h-2 rounded-full flex-shrink-0 bg-gray-300"></div>' +
+          '<button onclick="event.stopPropagation();quickStatusCal('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex items-center justify-center text-xs transition-colors"></button>' +
+          '<span class="text-sm text-gray-600">'+assigneePrefix+esc(t.title)+'</span>' +
+          (t.project_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.project_name)+'</span>' : '') +
+          '</div>';
+      });
+      html += '</div></div>';
+    }
+  }
+
+  return html;
+}
+
+async function quickStatusCal(id, current) {
+  const next = current === 'done' ? 'todo' : 'done';
+  await API.put('/api/tasks/' + id, { status: next });
+  await loadCalendarTasks(); await loadDashboard(); render();
+}
+
+function addTaskOnDate(dateStr) {
+  S.newTaskDate = dateStr;
+  S.showNewTaskModal = true;
+  render();
+  // Pre-fill the date input after render
+  setTimeout(function() {
+    var el = document.getElementById('nt_due');
+    if (el && dateStr) el.value = dateStr + 'T09:00';
+  }, 50);
+}
+
+// ==================== CALENDAR VIEW ====================
+function renderCalendarView() {
+  const year = S.calYear;
+  const month = S.calMonth;
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().split('T')[0];
+  const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  // Group tasks by date
+  const tasksByDate = {};
+  (S.calTasks || []).forEach(function(t) {
+    if (!t.due_date) return;
+    const d = t.due_date.split('T')[0];
+    if (!tasksByDate[d]) tasksByDate[d] = [];
+    tasksByDate[d].push(t);
+  });
+
+  // Navigation
+  let html = '<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">' +
+    '<div class="flex items-center justify-between px-4 py-3 border-b bg-gray-50">' +
+    '<button onclick="calNav(-1)" class="p-2 hover:bg-gray-200 rounded-lg"><i class="fas fa-chevron-left text-gray-600"></i></button>' +
+    '<h3 class="font-bold text-gray-800">'+monthName+'</h3>' +
+    '<button onclick="calNav(1)" class="p-2 hover:bg-gray-200 rounded-lg"><i class="fas fa-chevron-right text-gray-600"></i></button>' +
+    '</div>';
+
+  // Day headers
+  html += '<div class="grid grid-cols-7 border-b">';
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(function(d) {
+    html += '<div class="text-center text-xs font-semibold text-gray-500 py-2">'+d+'</div>';
+  });
+  html += '</div>';
+
+  // Calendar grid
+  html += '<div class="grid grid-cols-7">';
+  // Empty cells before first day
+  for (var i = 0; i < firstDay; i++) {
+    html += '<div class="min-h-[80px] md:min-h-[100px] border-b border-r border-gray-100 bg-gray-50"></div>';
+  }
+  // Day cells
+  for (var day = 1; day <= daysInMonth; day++) {
+    const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+    const isToday = dateStr === todayStr;
+    const dayTasks = tasksByDate[dateStr] || [];
+    const openTasks = dayTasks.filter(function(t){return t.status !== 'done' && t.status !== 'cancelled';});
+    const doneTasks = dayTasks.filter(function(t){return t.status === 'done';});
+
+    html += '<div class="min-h-[80px] md:min-h-[100px] border-b border-r border-gray-100 p-1 cursor-pointer hover:bg-indigo-50/30 transition-colors relative group" onclick="addTaskOnDate(&apos;'+dateStr+'&apos;)">' +
+      '<div class="flex items-center justify-between">' +
+      '<span class="'+(isToday?'bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold':'text-sm '+(day===1?'font-semibold':''))+' '+(dayTasks.length>0?'text-gray-800':'text-gray-400')+'">'+day+'</span>' +
+      '<button onclick="event.stopPropagation();addTaskOnDate(&apos;'+dateStr+'&apos;)" class="w-5 h-5 rounded-full hover:bg-indigo-100 flex items-center justify-center text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"><i class="fas fa-plus"></i></button>' +
+      '</div>';
+
+    // Task dots/chips
+    if (dayTasks.length > 0) {
+      html += '<div class="mt-1 space-y-0.5">';
+      dayTasks.slice(0, 3).forEach(function(t) {
+        const isDone = t.status === 'done';
+        const prioColors = {urgent:'bg-red-500',high:'bg-orange-400',medium:'bg-indigo-400',low:'bg-green-400'};
+        const bg = isDone ? 'bg-gray-200 text-gray-400 line-through' : (prioColors[t.priority] ? prioColors[t.priority].replace('bg-','bg-')+'/15 text-gray-700' : 'bg-indigo-50 text-gray-700');
+        html += '<div onclick="event.stopPropagation();loadTaskDetail('+t.id+')" class="text-[10px] md:text-xs truncate rounded px-1 py-0.5 '+(isDone?'bg-gray-100 text-gray-400 line-through':'bg-indigo-50 text-gray-700 hover:bg-indigo-100')+' leading-tight" title="'+esc(t.title)+'">'+esc(t.title)+'</div>';
+      });
+      if (dayTasks.length > 3) {
+        html += '<div class="text-[10px] text-gray-400 px-1">+'+(dayTasks.length-3)+' more</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+  // Fill remaining cells
+  const totalCells = firstDay + daysInMonth;
+  const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (var r = 0; r < remaining; r++) {
+    html += '<div class="min-h-[80px] md:min-h-[100px] border-b border-r border-gray-100 bg-gray-50"></div>';
+  }
+  html += '</div></div>';
+
+  // Unscheduled section below calendar
+  if ((S.calUnscheduled || []).length > 0) {
+    html += '<div class="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-4">' +
+      '<h4 class="text-sm font-semibold text-gray-500 mb-2"><i class="fas fa-inbox mr-2 text-gray-400"></i>Unscheduled Tasks ('+S.calUnscheduled.length+')</h4>' +
+      '<div class="space-y-1">';
+    S.calUnscheduled.slice(0, 10).forEach(function(t) {
+      html += '<div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm" onclick="loadTaskDetail('+t.id+')">' +
+        priorityIcon(t.priority) + '<span class="truncate">'+esc(t.title)+'</span>' +
+        (t.project_name ? '<span class="text-xs text-gray-400 ml-auto flex-shrink-0">'+esc(t.project_name)+'</span>' : '') +
+        '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  return html;
+}
+
+function calNav(dir) {
+  S.calMonth += dir;
+  if (S.calMonth > 11) { S.calMonth = 0; S.calYear++; }
+  if (S.calMonth < 0) { S.calMonth = 11; S.calYear--; }
+  loadCalendarTasks().then(render);
+  render();
+}
+
+// ==================== STATS VIEW (original dashboard) ====================
+function renderStatsView() {
   if (!S.dashboard) return '<p>Loading dashboard...</p>';
   const d = S.dashboard;
   const statusCounts = {};
@@ -318,18 +582,13 @@ function renderDashboardPage() {
     statCard('In Progress', statusCounts['in_progress'] || 0, 'fas fa-spinner', 'bg-blue-500', 'text-blue-600') +
     statCard('Completed', statusCounts['done'] || 0, 'fas fa-check-circle', 'bg-green-500', 'text-green-600') +
     '</div>' +
-    // Quick action buttons
-    '<div class="flex flex-wrap gap-3 mb-6">' +
-    '<button onclick="S.showNewTaskModal=true;render()" class="bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2"><i class="fas fa-plus"></i>New Task</button>' +
-    '<button onclick="navigate(&apos;tasks&apos;);setTimeout(function(){S.showQuickAdd=true;S.quickAddResult=null;render()},100)" class="bg-white border border-indigo-300 text-indigo-600 px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-50 flex items-center gap-2"><i class="fas fa-paste"></i>Quick Add Tasks</button>' +
-    '</div>' +
     '<div class="grid md:grid-cols-2 gap-6">' +
-    // My tasks (admin sees all, others see assigned)
-    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-'+(S.user?.role==='admin'||S.user?.role==='manager'?'tasks':'user-check')+' text-indigo-500"></i>'+(S.user?.role==='admin'||S.user?.role==='manager'?'All Open Tasks':'My Tasks')+'</h3>' +
+    // My tasks
+    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-user-check text-indigo-500"></i>My Tasks</h3>' +
     '<div class="space-y-2">' + ((d.myTasks || []).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No open tasks</p>' :
     (d.myTasks || []).map(t => '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
       priorityIcon(t.priority) +
-      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div><div class="text-xs text-gray-400">'+(t.assignee_names ? '<i class="fas fa-user text-gray-300 mr-1"></i>'+esc(t.assignee_names) : '<span class="text-gray-300">Unassigned</span>')+(t.project_name ? ' &middot; '+esc(t.project_name) : '')+(t.client_name ? ' &middot; '+esc(t.client_name) : '')+'</div></div>' +
+      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div><div class="text-xs text-gray-400">'+(t.project_name ? esc(t.project_name) : '')+(t.client_name ? ' &middot; '+esc(t.client_name) : '')+'</div></div>' +
       '<div>'+dueLabel(t.due_date)+'</div>' +
       '<span class="status-badge '+statusColor(t.status)+'">'+esc(t.status)+'</span></div>').join('')) +
     '</div></div>' +
@@ -749,7 +1008,7 @@ function renderNewTaskModal() {
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Description</label><textarea id="nt_desc" class="w-full border rounded-lg px-3 py-2 text-sm min-h-[60px]" placeholder="Add details..."></textarea></div>' +
     '<div class="grid grid-cols-2 gap-4">' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Priority</label><select id="nt_priority" class="w-full text-sm border rounded-lg px-3 py-2"><option value="medium">Medium</option><option value="urgent">Urgent</option><option value="high">High</option><option value="low">Low</option></select></div>' +
-    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Due Date</label><input type="datetime-local" id="nt_due" class="w-full text-sm border rounded-lg px-3 py-2"></div></div>' +
+    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Due Date</label><input type="datetime-local" id="nt_due" class="w-full text-sm border rounded-lg px-3 py-2" value="'+(S.newTaskDate ? S.newTaskDate+'T09:00' : '')+'"></div></div>' +
     '<div class="grid grid-cols-2 gap-4">' +
     ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Client</label><select id="nt_client" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'">'+esc(c.company_name)+'</option>').join('')+'</select></div>' : '') +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Project</label><select id="nt_project" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div></div>' +
@@ -1325,13 +1584,15 @@ function bindEvents() {
         description: document.getElementById('nt_desc').value,
         priority: document.getElementById('nt_priority').value,
         due_date: document.getElementById('nt_due').value || null,
-        client_id: document.getElementById('nt_client').value || null,
+        client_id: (document.getElementById('nt_client') ? document.getElementById('nt_client').value : '') || null,
         project_id: document.getElementById('nt_project').value || null,
         tags,
         assignees: assigneeId ? [{ user_id: parseInt(assigneeId), role: 'assignee' }] : [],
       });
       S.showNewTaskModal = false;
-      await loadTasks(); render();
+      S.newTaskDate = null;
+      await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
+      render();
     };
   }
 }

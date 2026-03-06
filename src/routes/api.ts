@@ -999,37 +999,25 @@ apiRoutes.get('/dashboard', async (c) => {
 
   const isEmployee = c.get('userRole') === 'employee'
   const uid = c.get('entityId')
-  // Employee scoping: only tasks assigned to or created by the employee
-  const empFilter = isEmployee ? ' AND (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR t.created_by = ' + uid + ')' : ''
-  const empFilterNoAlias = isEmployee ? ' AND (id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR created_by = ' + uid + ')' : ''
+  // Dashboard: ALL users (even admin) only see their own assigned/created tasks
+  const myFilter = ' AND (id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR created_by = ' + uid + ')'
+  const myFilterAlias = ' AND (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR t.created_by = ' + uid + ')'
 
   const [tasksByStatus, tasksByPriority, overdueTasks, dueSoonTasks, myTasks, recentActivity] = await Promise.all([
-    c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE parent_task_id IS NULL' + empFilterNoAlias + ' GROUP BY status').all(),
-    c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL' + empFilterNoAlias + ' GROUP BY priority').all(),
-    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")' + empFilterNoAlias).first(),
-    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")' + empFilterNoAlias).first(),
-    // For admin/manager: show all open tasks. For employees: show only assigned/created tasks.
-    (c.get('userRole') === 'admin' || c.get('userRole') === 'manager') ?
+    c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE parent_task_id IS NULL' + myFilter + ' GROUP BY status').all(),
+    c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL' + myFilter + ' GROUP BY priority').all(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")' + myFilter).first(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")' + myFilter).first(),
     c.env.DB.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
         (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN clients cl ON t.client_id = cl.id
-      WHERE t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled')
+      WHERE t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled') ${myFilterAlias}
       ORDER BY t.due_date ASC NULLS LAST LIMIT 15
-    `).all() :
-    c.env.DB.prepare(`
-      SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
-        (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
-      FROM tasks t
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN clients cl ON t.client_id = cl.id
-      WHERE (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.status NOT IN ('done','cancelled')
-      ORDER BY t.due_date ASC NULLS LAST LIMIT 15
-    `).bind(uid, uid).all(),
-    // Activity: employees only see activity on their tasks
-    isEmployee ?
+    `).all(),
+    // Activity: all users see only activity on their assigned/created tasks
     c.env.DB.prepare(`
       SELECT al.*, t.title as task_title,
         CASE WHEN al.actor_type = 'user' THEN u.name WHEN al.actor_type = 'client' THEN cl.contact_name ELSE 'System' END as actor_name
@@ -1039,16 +1027,7 @@ apiRoutes.get('/dashboard', async (c) => {
       LEFT JOIN clients cl ON al.actor_type = 'client' AND al.actor_id = cl.id
       WHERE al.task_id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR al.task_id IN (SELECT id FROM tasks WHERE created_by = ?)
       ORDER BY al.created_at DESC LIMIT 20
-    `).bind(uid, uid).all() :
-    c.env.DB.prepare(`
-      SELECT al.*, t.title as task_title,
-        CASE WHEN al.actor_type = 'user' THEN u.name WHEN al.actor_type = 'client' THEN cl.contact_name ELSE 'System' END as actor_name
-      FROM activity_log al
-      LEFT JOIN tasks t ON al.task_id = t.id
-      LEFT JOIN users u ON al.actor_type = 'user' AND al.actor_id = u.id
-      LEFT JOIN clients cl ON al.actor_type = 'client' AND al.actor_id = cl.id
-      ORDER BY al.created_at DESC LIMIT 20
-    `).all(),
+    `).bind(uid, uid).all(),
   ])
 
   return c.json({
@@ -1059,6 +1038,69 @@ apiRoutes.get('/dashboard', async (c) => {
     myTasks: myTasks.results,
     recentActivity: recentActivity.results.map((a: any) => ({ ...a, details: a.details ? JSON.parse(a.details) : {} })),
   })
+})
+
+// Calendar / Agenda view — returns tasks for a date range, scoped to assigned user
+apiRoutes.get('/dashboard/calendar', async (c) => {
+  const { start, end } = c.req.query()
+  if (!start || !end) return c.json({ error: 'start and end dates required' }, 400)
+  
+  const uid = c.get('entityId')
+  const isClient = c.get('userType') === 'client'
+  
+  let whereClause: string
+  let params: any[]
+
+  if (isClient) {
+    const cIds = c.get('clientIds') || [uid]
+    const ph = cIds.map(() => '?').join(',')
+    whereClause = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?`
+    params = [...cIds, start, end]
+  } else {
+    // ALL users (even admin) see only their assigned/created tasks on dashboard calendar
+    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?`
+    params = [uid, uid, start, end]
+  }
+
+  const tasks = await c.env.DB.prepare(`
+    SELECT t.id, t.title, t.status, t.priority, t.due_date, t.client_id,
+      p.name as project_name, p.color as project_color,
+      cl.company_name as client_name,
+      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+    FROM tasks t
+    LEFT JOIN projects p ON t.project_id = p.id
+    LEFT JOIN clients cl ON t.client_id = cl.id
+    WHERE ${whereClause}
+    ORDER BY t.due_date ASC, CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
+  `).bind(...params).all()
+
+  // Also fetch tasks with no due date (for agenda "unscheduled" section)
+  let noDateWhere: string
+  let noDateParams: any[]
+  if (isClient) {
+    const cIds = c.get('clientIds') || [uid]
+    const ph = cIds.map(() => '?').join(',')
+    noDateWhere = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
+    noDateParams = [...cIds]
+  } else {
+    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
+    noDateParams = [uid, uid]
+  }
+
+  const unscheduled = await c.env.DB.prepare(`
+    SELECT t.id, t.title, t.status, t.priority, t.due_date, t.client_id,
+      p.name as project_name, p.color as project_color,
+      cl.company_name as client_name,
+      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+    FROM tasks t
+    LEFT JOIN projects p ON t.project_id = p.id
+    LEFT JOIN clients cl ON t.client_id = cl.id
+    WHERE ${noDateWhere}
+    ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
+    LIMIT 30
+  `).bind(...noDateParams).all()
+
+  return c.json({ tasks: tasks.results, unscheduled: unscheduled.results })
 })
 
 // ==================== ATTACHMENTS ====================
