@@ -233,8 +233,8 @@ function renderDashboardPage() {
   return companySummary +
     '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">' +
     statCard('Overdue', d.overdueTasks||0, 'fas fa-exclamation-triangle', 'bg-red-500', 'text-red-600') +
+    statCard('Due Soon', d.dueSoonTasks||0, 'fas fa-clock', 'bg-amber-500', 'text-amber-600') +
     statCard('In Progress', sc['in_progress']||0, 'fas fa-spinner', 'bg-blue-500', 'text-blue-600') +
-    statCard('In Review', sc['review']||0, 'fas fa-eye', 'bg-purple-500', 'text-purple-600') +
     statCard('Completed', sc['done']||0, 'fas fa-check-circle', 'bg-green-500', 'text-green-600') +
     '</div>' +
     // Quick action buttons
@@ -242,16 +242,18 @@ function renderDashboardPage() {
     '<button onclick="CS.showNewTask=true;render()" class="bg-sky-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-sky-700 flex items-center gap-2"><i class="fas fa-plus"></i>New Task</button>' +
     '<button onclick="navigate(&apos;tasks&apos;);setTimeout(function(){CS.showQuickAdd=true;CS.quickAddResult=null;render()},100)" class="bg-white border border-sky-300 text-sky-600 px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-sky-50 flex items-center gap-2"><i class="fas fa-paste"></i>Quick Add Tasks</button>' +
     '</div>' +
-    // Recent tasks
-    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-tasks text-sky-500"></i>Recent Tasks</h3>' +
-    '<div class="space-y-2">' + ((d.recentTasks||[]).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No tasks yet</p>' :
-    (d.recentTasks||[]).map(function(t){ return '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
-      '<button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-sky-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button>' +
+    // All Open Tasks — employee-style list
+    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-tasks text-sky-500"></i>All Open Tasks</h3>' +
+    '<div class="space-y-1">' + (((d.openTasks||d.recentTasks)||[]).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No open tasks</p>' :
+    ((d.openTasks||d.recentTasks)||[]).map(function(t){ return '<div class="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
       priorityIcon(t.priority) +
-      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate '+(t.status==='done'?'line-through text-gray-400':'')+'">'+esc(t.title)+'</div></div>' +
-      (CS.hasMultiCompany && t.client_name ? companyChip(t.client_name) : '') +
-      '<span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>' +
-      dueLabel(t.due_date) + '</div>'; }).join('')) +
+      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate '+(t.status==='done'?'line-through text-gray-400':'')+'">'+esc(t.title)+'</div>' +
+      '<div class="text-xs text-gray-400 mt-0.5">' +
+      (t.due_date ? '<i class="fas fa-calendar text-gray-300 mr-1"></i>' + new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '<span class="text-gray-300">No due date</span>') +
+      (t.project_name ? ' &middot; ' + esc(t.project_name) : '') +
+      (CS.hasMultiCompany && t.client_name ? ' &middot; ' + esc(t.client_name) : '') +
+      '</div></div>' +
+      '</div>'; }).join('')) +
     '</div></div>' +
     // Priority breakdown
     '<div class="mt-6 grid md:grid-cols-4 gap-4">' +

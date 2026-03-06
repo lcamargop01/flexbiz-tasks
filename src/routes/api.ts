@@ -895,13 +895,15 @@ apiRoutes.get('/dashboard', async (c) => {
   if (c.get('userType') === 'client') {
     const cIds = c.get('clientIds') || [c.get('entityId')]
     const ph = cIds.map(() => '?').join(',')
-    const [tasksByStatus, tasksByPriority, recentTasks, overdueTasks] = await Promise.all([
+    const [tasksByStatus, tasksByPriority, recentTasks, overdueTasks, dueSoonTasks, openTasks] = await Promise.all([
       c.env.DB.prepare(`SELECT status, COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 GROUP BY status`).bind(...cIds).all(),
       c.env.DB.prepare(`SELECT priority, COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 AND status NOT IN ("done","cancelled") GROUP BY priority`).bind(...cIds).all(),
-      c.env.DB.prepare(`SELECT t.id, t.title, t.status, t.priority, t.due_date, cl.company_name as client_name FROM tasks t LEFT JOIN clients cl ON t.client_id = cl.id WHERE t.client_id IN (${ph}) AND t.is_visible_to_client = 1 ORDER BY t.updated_at DESC LIMIT 10`).bind(...cIds).all(),
+      c.env.DB.prepare(`SELECT t.id, t.title, t.status, t.priority, t.due_date, cl.company_name as client_name, p.name as project_name FROM tasks t LEFT JOIN clients cl ON t.client_id = cl.id LEFT JOIN projects p ON t.project_id = p.id WHERE t.client_id IN (${ph}) AND t.is_visible_to_client = 1 ORDER BY t.updated_at DESC LIMIT 10`).bind(...cIds).all(),
       c.env.DB.prepare(`SELECT COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 AND due_date < datetime("now") AND status NOT IN ("done","cancelled")`).bind(...cIds).first(),
+      c.env.DB.prepare(`SELECT COUNT(*) as count FROM tasks WHERE client_id IN (${ph}) AND is_visible_to_client = 1 AND due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")`).bind(...cIds).first(),
+      c.env.DB.prepare(`SELECT t.id, t.title, t.status, t.priority, t.due_date, cl.company_name as client_name, p.name as project_name FROM tasks t LEFT JOIN clients cl ON t.client_id = cl.id LEFT JOIN projects p ON t.project_id = p.id WHERE t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled') ORDER BY t.due_date ASC NULLS LAST LIMIT 20`).bind(...cIds).all(),
     ])
-    return c.json({ tasksByStatus: tasksByStatus.results, tasksByPriority: tasksByPriority.results, recentTasks: recentTasks.results, overdueTasks: overdueTasks?.count || 0 })
+    return c.json({ tasksByStatus: tasksByStatus.results, tasksByPriority: tasksByPriority.results, recentTasks: recentTasks.results, overdueTasks: overdueTasks?.count || 0, dueSoonTasks: dueSoonTasks?.count || 0, openTasks: openTasks.results })
   }
 
   const [tasksByStatus, tasksByPriority, overdueTasks, dueSoonTasks, myTasks, recentActivity] = await Promise.all([
