@@ -457,10 +457,13 @@ function renderAgendaView() {
 
 async function quickStatusCal(id, current) {
   const next = current === 'done' ? 'todo' : 'done';
+  // Optimistic UI: immediately update in-memory data so render() reflects the change
+  (S.calTasks || []).forEach(function(t) { if (t.id === id) t.status = next; });
+  (S.calUnscheduled || []).forEach(function(t) { if (t.id === id) t.status = next; });
+  if (S.dashboard && S.dashboard.myTasks) { S.dashboard.myTasks.forEach(function(t) { if (t.id === id) t.status = next; }); }
+  render();
+  // Then sync with server
   const res = await API.put('/api/tasks/' + id, { status: next });
-  if (next === 'done' && res && res.nextRecurringTaskId) {
-    // A new recurring occurrence was created
-  }
   await Promise.all([loadCalendarTasks(), loadDashboard(), loadTasks()]);
   render();
 }
@@ -833,6 +836,12 @@ async function handleDrop(e, newStatus) {
 
 async function quickStatus(id, current) {
   const next = current === 'done' ? 'todo' : 'done';
+  // Optimistic UI: immediately update in-memory data
+  (S.tasks || []).forEach(function(t) { if (t.id === id) t.status = next; });
+  (S.calTasks || []).forEach(function(t) { if (t.id === id) t.status = next; });
+  (S.calUnscheduled || []).forEach(function(t) { if (t.id === id) t.status = next; });
+  render();
+  // Then sync with server
   await API.put('/api/tasks/' + id, { status: next });
   await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
   render();
@@ -1049,18 +1058,20 @@ async function cycleStatus() {
   const order = ['todo','in_progress','review','done'];
   const idx = order.indexOf(S.selectedTask.status);
   const next = order[(idx + 1) % order.length];
-  const res = await API.put('/api/tasks/' + S.selectedTask.id, { status: next });
+  // Optimistic UI: immediately update local state
   S.selectedTask.status = next;
+  (S.tasks || []).forEach(function(t) { if (t.id === S.selectedTask.id) t.status = next; });
+  (S.calTasks || []).forEach(function(t) { if (t.id === S.selectedTask.id) t.status = next; });
+  render();
+  // Then sync with server
+  const res = await API.put('/api/tasks/' + S.selectedTask.id, { status: next });
   if (next === 'done' && S.selectedTask.is_recurring && res && res.nextRecurringTaskId) {
-    // Brief notification about next occurrence
     var rule = null;
     try { rule = S.selectedTask.recurrence_rule ? (typeof S.selectedTask.recurrence_rule === 'string' ? JSON.parse(S.selectedTask.recurrence_rule) : S.selectedTask.recurrence_rule) : null; } catch(e) {}
     var freqLabel = rule ? ({daily:'tomorrow',weekly:'next week',biweekly:'in 2 weeks',monthly:'next month',quarterly:'in 3 months',yearly:'next year'}[rule.frequency] || 'later') : 'later';
     alert('Recurring task completed! Next occurrence created for ' + freqLabel + '.');
-    await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
-  } else if (next === 'done' || next === 'todo') {
-    await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
   }
+  await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
   render();
 }
 
