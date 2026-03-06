@@ -40,10 +40,6 @@ export function renderClientLogin(): string {
         <i class="fas fa-arrow-left mr-1"></i>Employee Login
       </a>
     </div>
-    <div class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
-      <p class="font-semibold mb-1">Demo Client:</p>
-      <p>alex@techstart.com / client123</p>
-    </div>
   </div>
   <script>
     if (localStorage.getItem('flexbiz_client_token')) window.location.href = '/client/portal';

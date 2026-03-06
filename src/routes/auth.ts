@@ -123,3 +123,29 @@ authRoutes.post('/logout', async (c) => {
   }
   return c.json({ success: true })
 })
+
+// Change password (employee/admin)
+authRoutes.post('/change-password', async (c) => {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) return c.json({ error: 'Unauthorized' }, 401)
+  const token = authHeader.slice(7)
+  const session = await c.env.DB.prepare(
+    'SELECT * FROM sessions WHERE token = ? AND expires_at > datetime("now")'
+  ).bind(token).first()
+  if (!session) return c.json({ error: 'Session expired' }, 401)
+
+  const { current_password, new_password } = await c.req.json()
+  if (!new_password || new_password.length < 6) return c.json({ error: 'New password must be at least 6 characters' }, 400)
+
+  if (session.user_type === 'user') {
+    const user = await c.env.DB.prepare('SELECT id FROM users WHERE id = ? AND password_hash = ?').bind(session.user_id, current_password).first()
+    if (!user) return c.json({ error: 'Current password is incorrect' }, 400)
+    await c.env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(new_password, session.user_id).run()
+  } else {
+    const client = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ? AND password_hash = ?').bind(session.client_id, current_password).first()
+    if (!client) return c.json({ error: 'Current password is incorrect' }, 400)
+    await c.env.DB.prepare('UPDATE clients SET password_hash = ? WHERE id = ?').bind(new_password, session.client_id).run()
+  }
+
+  return c.json({ success: true })
+})

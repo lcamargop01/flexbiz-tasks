@@ -61,7 +61,7 @@ apiRoutes.use('*', async (c, next) => {
 
 // List tasks with filters
 apiRoutes.get('/tasks', async (c) => {
-  const { status, priority, client_id, project_id, assigned_to, search, parent_task_id, page = '1', limit = '50' } = c.req.query()
+  const { status, priority, client_id, project_id, assigned_to, search, parent_task_id, page = '1', limit = '50', sort = 'due_date', hide_done } = c.req.query()
   let where: string[] = []
   let params: any[] = []
 
@@ -74,6 +74,7 @@ apiRoutes.get('/tasks', async (c) => {
     where.push('t.is_visible_to_client = 1')
   }
 
+  if (hide_done === '1') { where.push('t.status NOT IN ("done","cancelled")') }
   if (status) { where.push('t.status = ?'); params.push(status) }
   if (priority) { where.push('t.priority = ?'); params.push(priority) }
   if (client_id) { where.push('t.client_id = ?'); params.push(parseInt(client_id)) }
@@ -105,10 +106,8 @@ apiRoutes.get('/tasks', async (c) => {
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN clients cl ON t.client_id = cl.id
     ${whereClause}
-    ORDER BY 
-      CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END,
-      t.due_date ASC NULLS LAST,
-      t.created_at DESC
+    ORDER BY
+      ${sort === 'priority' ? "CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, t.due_date ASC NULLS LAST" : sort === 'status' ? "CASE t.status WHEN 'blocked' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'review' THEN 2 WHEN 'todo' THEN 3 WHEN 'done' THEN 4 WHEN 'cancelled' THEN 5 END, t.due_date ASC NULLS LAST" : sort === 'created' ? 't.created_at DESC' : sort === 'title' ? 't.title ASC' : 't.due_date ASC NULLS LAST, t.created_at DESC'}
     LIMIT ? OFFSET ?
   `).bind(...params, parseInt(limit), offset).all()
 
@@ -976,9 +975,9 @@ apiRoutes.post('/tasks/:id/attachments', async (c) => {
       return c.json({ error: 'No file provided' }, 400)
     }
 
-    // Limit to 8MB (D1 row size safety)
-    if (file.size > 8 * 1024 * 1024) {
-      return c.json({ error: 'File too large. Maximum 8MB.' }, 400)
+    // Limit to 25MB
+    if (file.size > 25 * 1024 * 1024) {
+      return c.json({ error: 'File too large. Maximum 25MB.' }, 400)
     }
 
     const uploaderType = c.get('userType') === 'client' ? 'client' : 'user'

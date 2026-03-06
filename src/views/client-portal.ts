@@ -60,7 +60,8 @@ const CS = {
   dashboard: null, selectedTask: null, showTaskModal: false, showNewTask: false,
   showQuickAdd: false, quickAddResult: null, quickAddLoading: false,
   filters: { status: '', project_id: '', company_id: '' }, tab: 'tasks',
-  linkedCompanies: [], allClientIds: [], hasMultiCompany: false
+  linkedCompanies: [], allClientIds: [], hasMultiCompany: false,
+  sort: 'due_date', hideDone: true
 };
 
 const API = {
@@ -110,6 +111,8 @@ async function init() {
 
 async function loadTasks() {
   const params = new URLSearchParams(); params.set('parent_task_id', 'null');
+  params.set('sort', CS.sort);
+  if (CS.hideDone) params.set('hide_done', '1');
   if (CS.filters.status) params.set('status', CS.filters.status);
   if (CS.filters.project_id) params.set('project_id', CS.filters.project_id);
   if (CS.filters.company_id) params.set('client_id', CS.filters.company_id);
@@ -131,7 +134,7 @@ function render() {
 }
 
 function renderBottomTabs() {
-  const tabs = [{id:'dashboard',icon:'fas fa-th-large',label:'Overview'},{id:'tasks',icon:'fas fa-tasks',label:'Tasks'},{id:'projects',icon:'fas fa-project-diagram',label:'Projects'},{id:'notifications',icon:'fas fa-bell',label:'Alerts'}];
+  const tabs = [{id:'dashboard',icon:'fas fa-th-large',label:'Overview'},{id:'tasks',icon:'fas fa-tasks',label:'Tasks'},{id:'projects',icon:'fas fa-project-diagram',label:'Projects'},{id:'notifications',icon:'fas fa-bell',label:'Alerts'},{id:'settings',icon:'fas fa-cog',label:'Settings'}];
   return '<div class="client-bottom-tabs">' +
     tabs.map(t=>'<button onclick="CS.tab=&#39;'+t.id+'&#39;;render()" class="'+(CS.tab===t.id?'active':'')+'">' +
       '<i class="'+t.icon+' tab-icon"></i>' +
@@ -157,7 +160,7 @@ function renderHeader() {
 }
 
 function renderTabs() {
-  const tabs = [{id:'dashboard',icon:'fas fa-th-large',label:'Overview'},{id:'tasks',icon:'fas fa-tasks',label:'Tasks'},{id:'projects',icon:'fas fa-project-diagram',label:'Projects'},{id:'notifications',icon:'fas fa-bell',label:'Notifications'}];
+  const tabs = [{id:'dashboard',icon:'fas fa-th-large',label:'Overview'},{id:'tasks',icon:'fas fa-tasks',label:'Tasks'},{id:'projects',icon:'fas fa-project-diagram',label:'Projects'},{id:'notifications',icon:'fas fa-bell',label:'Notifications'},{id:'settings',icon:'fas fa-cog',label:'Settings'}];
   return '<div class="desktop-tabs flex gap-1 mb-6 border-b"><div class="flex overflow-x-auto">'+tabs.map(t=>'<button onclick="CS.tab=&#39;'+t.id+'&#39;;render()" class="px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors '+(CS.tab===t.id?'border-sky-500 text-sky-600':'border-transparent text-gray-500 hover:text-gray-700')+'"><i class="'+t.icon+' mr-2"></i>'+t.label+(t.id==='notifications'&&CS.unreadCount>0?' <span class="bg-red-500 text-white text-[10px] px-1.5 rounded-full ml-1">'+CS.unreadCount+'</span>':'')+'</button>').join('')+'</div></div>';
 }
 
@@ -166,6 +169,7 @@ function renderContent() {
   if (CS.tab === 'tasks') return renderClientTasks();
   if (CS.tab === 'projects') return renderClientProjects();
   if (CS.tab === 'notifications') return renderClientNotifications();
+  if (CS.tab === 'settings') return renderClientSettings();
   return '';
 }
 
@@ -300,6 +304,10 @@ function renderClientTasks() {
 
   return quickAddSection +
     '<div class="flex flex-wrap items-center gap-2 md:gap-3 mb-4">' +
+    // Sort dropdown
+    '<select onchange="CS.sort=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 flex-1 md:flex-none"><option value="due_date"'+(CS.sort==='due_date'?' selected':'')+'>Sort: Due Date</option><option value="priority"'+(CS.sort==='priority'?' selected':'')+'>Sort: Priority</option><option value="status"'+(CS.sort==='status'?' selected':'')+'>Sort: Status</option><option value="created"'+(CS.sort==='created'?' selected':'')+'>Sort: Newest</option></select>' +
+    // Hide done toggle
+    '<button onclick="CS.hideDone=!CS.hideDone;loadTasks().then(render)" class="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm '+(CS.hideDone?'bg-green-50 border-green-300 text-green-700':'bg-white text-gray-500')+'" title="'+(CS.hideDone?'Completed hidden - tap to show':'Showing all - tap to hide completed')+'"><i class="fas fa-'+(CS.hideDone?'eye-slash':'eye')+'"></i><span class="hidden sm:inline">'+(CS.hideDone?'Done hidden':'Showing all')+'</span></button>' +
     '<select onchange="CS.filters.status=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 flex-1 md:flex-none"><option value="">All Statuses</option><option value="todo"'+(CS.filters.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(CS.filters.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(CS.filters.status==='review'?' selected':'')+'>Review</option><option value="done"'+(CS.filters.status==='done'?' selected':'')+'>Done</option></select>' +
     '<select onchange="CS.filters.project_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 flex-1 md:flex-none"><option value="">All Projects</option>'+CS.projects.map(p=>'<option value="'+p.id+'"'+(CS.filters.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>' +
     renderCompanyFilter() +
@@ -339,11 +347,14 @@ function renderTaskDetail() {
     '<div class="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] md:max-h-[85vh] overflow-hidden flex flex-col slide-up md:fade-in">' +
     '<div class="px-4 md:px-6 py-3 md:py-4 border-b flex items-center justify-between bg-gray-50"><div class="flex items-center gap-2 flex-1 min-w-0"><span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>'+priorityIcon(t.priority)+(t.project_name?'<span class="text-xs text-gray-500 truncate">'+esc(t.project_name)+'</span>':'')+(CS.hasMultiCompany && t.client_name ? companyChip(t.client_name) : '')+'</div><button onclick="CS.showTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center flex-shrink-0" style="width:44px;height:44px"><i class="fas fa-times text-lg"></i></button></div>' +
     '<div class="flex-1 overflow-y-auto p-4 md:p-6" style="-webkit-overflow-scrolling:touch">' +
-    '<h2 class="text-xl font-bold mb-3">'+esc(t.title)+'</h2>' +
-    (t.description?'<p class="text-sm text-gray-600 mb-4 whitespace-pre-wrap">'+esc(t.description)+'</p>':'') +
-    '<div class="grid grid-cols-2 gap-4 mb-6">' +
+    // Editable title
+    '<div class="mb-3"><input type="text" value="'+esc(t.title)+'" class="text-xl font-bold w-full border-0 border-b-2 border-transparent focus:border-sky-500 focus:ring-0 p-0 bg-transparent" onchange="updateClientTask('+t.id+',&#39;title&#39;,this.value)"></div>' +
+    // Editable description
+    '<div class="mb-4"><label class="text-xs font-semibold text-gray-500 block mb-1">Description</label><textarea class="w-full border border-gray-200 rounded-lg p-3 text-sm min-h-[60px] focus:ring-2 focus:ring-sky-200" onchange="updateClientTask('+t.id+',&#39;description&#39;,this.value)">'+esc(t.description||'')+'</textarea></div>' +
+    '<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">' +
     '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Status</label><select onchange="updateClientTask('+t.id+',&#39;status&#39;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
-    '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Due Date</label><div class="text-sm">'+dueLabel(t.due_date)+'</div></div></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Priority</label><select onchange="updateClientTask('+t.id+',&#39;priority&#39;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="urgent"'+(t.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(t.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(t.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(t.priority==='low'?' selected':'')+'>Low</option></select></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Due Date</label><input type="datetime-local" value="'+(t.due_date?t.due_date.slice(0,16):'')+'" onchange="updateClientTask('+t.id+',&#39;due_date&#39;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"></div></div>' +
     // Subtasks
     (t.subtasks?.length?'<div class="mb-6"><h3 class="text-sm font-bold text-gray-700 mb-2">Subtasks</h3><div class="space-y-1">'+t.subtasks.map(s=>'<div class="flex items-center gap-2 p-2 rounded bg-gray-50"><div class="w-4 h-4 rounded-full border '+(s.status==='done'?'bg-green-500 border-green-500':'border-gray-300')+'"></div><span class="text-sm '+(s.status==='done'?'line-through text-gray-400':'')+'">'+esc(s.title)+'</span></div>').join('')+'</div></div>':'') +
     // Attachments
@@ -381,7 +392,7 @@ async function addClientComment(taskId) {
 async function clientUploadFile(taskId, input) {
   if (!input.files || !input.files[0]) return;
   var file = input.files[0];
-  if (file.size > 8 * 1024 * 1024) { alert('File too large. Maximum 8MB.'); input.value = ''; return; }
+  if (file.size > 25 * 1024 * 1024) { alert('File too large. Maximum 25MB.'); input.value = ''; return; }
   var prog = document.getElementById('clientUploadProgress');
   if (prog) prog.classList.remove('hidden');
   try {
@@ -458,6 +469,54 @@ function bindEvents() {
     CS.showNewTask = false;
     await loadTasks(); render();
   };
+}
+
+function renderClientSettings() {
+  return '<div class="max-w-lg">' +
+    '<div class="bg-white rounded-xl border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-user text-sky-500 mr-2"></i>Your Account</h3>' +
+    '<div class="flex items-center gap-3"><div class="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center text-sky-700 text-lg font-bold">'+esc((CS.client?.contact_name||'?').charAt(0))+'</div><div><div class="font-bold">'+esc(CS.client?.contact_name)+'</div><div class="text-sm text-gray-500">'+esc(CS.client?.company_name)+'</div><div class="text-xs text-gray-400">'+esc(CS.client?.email)+'</div></div></div></div>' +
+    '<div class="bg-white rounded-xl border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-lock text-sky-500 mr-2"></i>Change Password</h3>' +
+    '<form onsubmit="event.preventDefault();clientChangePassword(this)" class="space-y-3">' +
+    '<input type="password" id="ccp_current" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Current password">' +
+    '<input type="password" id="ccp_new" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="New password (min 6 characters)" minlength="6">' +
+    '<input type="password" id="ccp_confirm" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Confirm new password" minlength="6">' +
+    '<div id="ccpResult" class="hidden text-sm p-2 rounded-lg"></div>' +
+    '<button type="submit" class="bg-sky-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-sky-700"><i class="fas fa-save mr-1"></i>Update Password</button></form></div>' +
+    '<div class="bg-white rounded-xl border p-6"><button onclick="clientLogout()" class="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-lg hover:bg-red-100 border border-red-200"><i class="fas fa-sign-out-alt mr-1"></i>Sign Out</button></div></div>';
+}
+
+async function clientChangePassword(form) {
+  var cpNew = document.getElementById('ccp_new').value;
+  var cpConfirm = document.getElementById('ccp_confirm').value;
+  var resultEl = document.getElementById('ccpResult');
+  if (cpNew !== cpConfirm) {
+    resultEl.className = 'text-sm p-2 rounded-lg bg-red-50 text-red-600';
+    resultEl.textContent = 'New passwords do not match';
+    resultEl.classList.remove('hidden');
+    return;
+  }
+  try {
+    var token = localStorage.getItem('flexbiz_client_token');
+    var res = await fetch('/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ current_password: document.getElementById('ccp_current').value, new_password: cpNew })
+    });
+    var data = await res.json();
+    if (data.error) {
+      resultEl.className = 'text-sm p-2 rounded-lg bg-red-50 text-red-600';
+      resultEl.textContent = data.error;
+    } else {
+      resultEl.className = 'text-sm p-2 rounded-lg bg-green-50 text-green-600';
+      resultEl.textContent = 'Password changed successfully!';
+      form.reset();
+    }
+    resultEl.classList.remove('hidden');
+  } catch(e) {
+    resultEl.className = 'text-sm p-2 rounded-lg bg-red-50 text-red-600';
+    resultEl.textContent = 'Connection error. Please try again.';
+    resultEl.classList.remove('hidden');
+  }
 }
 
 function clientLogout() {

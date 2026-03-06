@@ -74,6 +74,7 @@ const S = {
   viewMode: 'list', selectedTask: null, showTaskModal: false, showNewTaskModal: false,
   sidebarOpen: false, loading: true, editingProject: null, editingClient: null, showFilters: false,
   showQuickAdd: false, quickAddResult: null, quickAddLoading: false,
+  sort: 'due_date', hideDone: true,
 };
 
 // ==================== API ====================
@@ -106,6 +107,8 @@ async function loadTasks() {
   const params = new URLSearchParams();
   Object.entries(S.filters).forEach(([k, v]) => { if (v) params.set(k, v); });
   params.set('parent_task_id', 'null');
+  params.set('sort', S.sort);
+  if (S.hideDone) params.set('hide_done', '1');
   const data = await API.get('/api/tasks?' + params.toString());
   if (data) S.tasks = data.tasks;
 }
@@ -289,6 +292,11 @@ function renderDashboardPage() {
     statCard('In Progress', statusCounts['in_progress'] || 0, 'fas fa-spinner', 'bg-blue-500', 'text-blue-600') +
     statCard('Completed', statusCounts['done'] || 0, 'fas fa-check-circle', 'bg-green-500', 'text-green-600') +
     '</div>' +
+    // Quick action buttons
+    '<div class="flex flex-wrap gap-3 mb-6">' +
+    '<button onclick="S.showNewTaskModal=true;render()" class="bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2"><i class="fas fa-plus"></i>New Task</button>' +
+    '<button onclick="navigate(&apos;tasks&apos;);setTimeout(function(){S.showQuickAdd=true;S.quickAddResult=null;render()},100)" class="bg-white border border-indigo-300 text-indigo-600 px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-50 flex items-center gap-2"><i class="fas fa-paste"></i>Quick Add Tasks</button>' +
+    '</div>' +
     '<div class="grid md:grid-cols-2 gap-6">' +
     // My tasks (admin sees all, others see assigned)
     '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-'+(S.user?.role==='admin'?'tasks':'user-check')+' text-indigo-500"></i>'+(S.user?.role==='admin'?'All Open Tasks':'My Tasks')+'</h3>' +
@@ -425,9 +433,13 @@ function renderTasksPage() {
     '</div></div>';
 
   return quickAddSection + '<div class="mb-4 space-y-3">' +
-    // Top row: view toggle + search on mobile + count
-    '<div class="flex items-center gap-2">' +
+    // Top row: view toggle + sort + hide done + search on mobile + count
+    '<div class="flex items-center gap-2 flex-wrap">' +
     '<div class="flex bg-white border rounded-lg overflow-hidden"><button onclick="S.viewMode=&apos;list&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='list'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-list"></i><span class="hidden sm:inline ml-1">List</span></button><button onclick="S.viewMode=&apos;kanban&apos;;render()" class="px-3 py-2 text-sm '+(S.viewMode==='kanban'?'bg-indigo-100 text-indigo-700':'text-gray-500 hover:bg-gray-50')+'"><i class="fas fa-columns"></i><span class="hidden sm:inline ml-1">Board</span></button></div>' +
+    // Sort dropdown
+    '<select onchange="S.sort=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white"><option value="due_date"'+(S.sort==='due_date'?' selected':'')+'>Sort: Due Date</option><option value="priority"'+(S.sort==='priority'?' selected':'')+'>Sort: Priority</option><option value="status"'+(S.sort==='status'?' selected':'')+'>Sort: Status</option><option value="created"'+(S.sort==='created'?' selected':'')+'>Sort: Newest</option><option value="title"'+(S.sort==='title'?' selected':'')+'>Sort: A-Z</option></select>' +
+    // Hide done toggle
+    '<button onclick="S.hideDone=!S.hideDone;loadTasks().then(render)" class="flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm '+(S.hideDone?'bg-green-50 border-green-300 text-green-700':'bg-white text-gray-500')+'" title="'+(S.hideDone?'Completed tasks hidden - click to show':'Showing all tasks - click to hide completed')+'"><i class="fas fa-'+(S.hideDone?'eye-slash':'eye')+'"></i><span class="hidden sm:inline">'+(S.hideDone?'Done hidden':'Showing all')+'</span></button>' +
     // Mobile search
     '<div class="md:hidden flex items-center bg-gray-100 rounded-lg px-3 py-2 flex-1"><i class="fas fa-search text-gray-400 mr-2"></i><input type="text" placeholder="Search..." class="bg-transparent outline-none text-sm flex-1" onkeyup="handleSearch(event)" value="'+esc(S.filters.search)+'"></div>' +
     '<button onclick="S.showFilters=!S.showFilters;render()" class="md:hidden flex items-center gap-1 px-3 py-2 border rounded-lg text-sm '+(activeFilterCount>0?'bg-indigo-50 border-indigo-300 text-indigo-700':'text-gray-500')+'"><i class="fas fa-filter"></i>'+(activeFilterCount>0?'<span class="bg-indigo-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">'+activeFilterCount+'</span>':'')+'</button>' +
@@ -638,7 +650,7 @@ async function addComment(taskId, isInternal) {
 async function uploadFile(taskId, input) {
   if (!input.files || !input.files[0]) return;
   var file = input.files[0];
-  if (file.size > 8 * 1024 * 1024) { alert('File too large. Maximum 8MB.'); input.value = ''; return; }
+  if (file.size > 25 * 1024 * 1024) { alert('File too large. Maximum 25MB.'); input.value = ''; return; }
   var prog = document.getElementById('uploadProgress');
   if (prog) prog.classList.remove('hidden');
   try {
@@ -1027,12 +1039,54 @@ function renderSettingsPage() {
   return '<div class="max-w-2xl"><h2 class="text-lg font-bold mb-4">Settings</h2>' +
     '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-user text-indigo-500 mr-2"></i>Your Profile</h3>' +
     '<div class="space-y-3"><div class="flex items-center gap-3">'+avatar(S.user?.name||'U','w-16 h-16 text-2xl')+'<div><div class="font-bold">'+esc(S.user?.name)+'</div><div class="text-sm text-gray-500">'+esc(S.user?.email)+'</div><div class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full capitalize inline-block mt-1">'+esc(S.user?.role)+'</div></div></div></div></div>' +
+    // Change password
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-lock text-indigo-500 mr-2"></i>Change Password</h3>' +
+    '<form onsubmit="event.preventDefault();changePassword(this)" class="space-y-3 max-w-sm">' +
+    '<input type="password" id="cp_current" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Current password">' +
+    '<input type="password" id="cp_new" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="New password (min 6 characters)" minlength="6">' +
+    '<input type="password" id="cp_confirm" required class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Confirm new password" minlength="6">' +
+    '<div id="cpResult" class="hidden text-sm p-2 rounded-lg"></div>' +
+    '<button type="submit" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700"><i class="fas fa-save mr-1"></i>Update Password</button></form></div>' +
     '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4"><h3 class="font-bold mb-3"><i class="fas fa-calendar text-indigo-500 mr-2"></i>Apple Reminders / Calendar Sync</h3>' +
     '<p class="text-sm text-gray-600 mb-3">Subscribe to your task calendar in Apple Calendar or Reminders to get automatic due date alerts on your iPhone.</p>' +
     '<button onclick="generateCalendarLink()" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700"><i class="fas fa-link mr-1"></i>Generate Calendar URL</button>' +
     '<div id="calendarLink" class="mt-3 hidden"><div class="bg-gray-50 border rounded-lg p-3"><code id="calUrl" class="text-xs break-all text-indigo-600"></code></div><p class="text-xs text-gray-500 mt-2"><strong>How to use:</strong> Copy this URL, then on your iPhone go to Settings > Calendar > Accounts > Add Account > Other > Add Subscribed Calendar, and paste this URL.</p></div></div>' +
     '<div class="bg-white rounded-xl shadow-sm border p-6"><h3 class="font-bold mb-3"><i class="fas fa-sign-out-alt text-red-500 mr-2"></i>Account</h3>' +
-    '<button onclick="logout()" class="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-lg hover:bg-red-100 border border-red-200"><i class="fas fa-sign-out-alt mr-1"></i>Sign Out</button></div></div>';
+    '<button onclick="logout()" class="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-lg hover:bg-red-100 border border-red-200"><i class="fas fa-sign-out-alt mr-1"></i>Sign Out</button></div></div';
+}
+
+async function changePassword(form) {
+  var cpNew = document.getElementById('cp_new').value;
+  var cpConfirm = document.getElementById('cp_confirm').value;
+  var resultEl = document.getElementById('cpResult');
+  if (cpNew !== cpConfirm) {
+    resultEl.className = 'text-sm p-2 rounded-lg bg-red-50 text-red-600';
+    resultEl.textContent = 'New passwords do not match';
+    resultEl.classList.remove('hidden');
+    return;
+  }
+  try {
+    var token = localStorage.getItem('flexbiz_token');
+    var res = await fetch('/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ current_password: document.getElementById('cp_current').value, new_password: cpNew })
+    });
+    var data = await res.json();
+    if (data.error) {
+      resultEl.className = 'text-sm p-2 rounded-lg bg-red-50 text-red-600';
+      resultEl.textContent = data.error;
+    } else {
+      resultEl.className = 'text-sm p-2 rounded-lg bg-green-50 text-green-600';
+      resultEl.textContent = 'Password changed successfully!';
+      form.reset();
+    }
+    resultEl.classList.remove('hidden');
+  } catch(e) {
+    resultEl.className = 'text-sm p-2 rounded-lg bg-red-50 text-red-600';
+    resultEl.textContent = 'Connection error. Please try again.';
+    resultEl.classList.remove('hidden');
+  }
 }
 
 async function generateCalendarLink() {
