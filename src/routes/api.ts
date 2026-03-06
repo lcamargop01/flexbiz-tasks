@@ -221,7 +221,8 @@ apiRoutes.get('/tasks/:id', async (c) => {
 apiRoutes.post('/tasks', async (c) => {
   const body = await c.req.json()
   const { title, description, status = 'todo', priority = 'medium', project_id, client_id, due_date, start_date,
-    estimated_hours, tags, parent_task_id, is_visible_to_client = 1, assignees = [], process_id } = body
+    estimated_hours, tags, parent_task_id, is_visible_to_client = 1, assignees = [], process_id,
+    is_recurring = 0, recurrence_rule = null } = body
 
   // If client is creating task, force client_id
   const effectiveClientId = c.get('userType') === 'client' ? c.get('entityId') : client_id
@@ -229,13 +230,15 @@ apiRoutes.post('/tasks', async (c) => {
 
   const result = await c.env.DB.prepare(`
     INSERT INTO tasks (title, description, status, priority, project_id, client_id, due_date, start_date,
-      estimated_hours, tags, parent_task_id, is_visible_to_client, process_id, created_by, created_by_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      estimated_hours, tags, parent_task_id, is_visible_to_client, process_id, created_by, created_by_type,
+      is_recurring, recurrence_rule)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     title, description || null, status, priority, project_id || null, effectiveClientId || null,
     due_date || null, start_date || null, estimated_hours || null,
     tags ? JSON.stringify(tags) : null, parent_task_id || null, is_visible_to_client,
-    process_id || null, c.get('entityId'), createdByType
+    process_id || null, c.get('entityId'), createdByType,
+    is_recurring ? 1 : 0, recurrence_rule ? JSON.stringify(recurrence_rule) : null
   ).run()
 
   const taskId = result.meta.last_row_id
@@ -408,6 +411,68 @@ apiRoutes.put('/tasks/:id', async (c) => {
     fields.push('completed_at = datetime("now")')
   }
 
+  // Auto-generate next occurrence for recurring tasks when marked done
+  let nextTaskId: number | null = null
+  if (body.status === 'done' && task.status !== 'done' && task.is_recurring && task.recurrence_rule) {
+    try {
+      const rule = typeof task.recurrence_rule === 'string' ? JSON.parse(task.recurrence_rule) : task.recurrence_rule
+      // rule: { frequency: 'daily'|'weekly'|'biweekly'|'monthly'|'quarterly'|'yearly', endDate?: string }
+      const now = new Date()
+      const baseDue = task.due_date ? new Date(task.due_date) : now
+      let nextDue = new Date(baseDue)
+
+      switch (rule.frequency) {
+        case 'daily': nextDue.setDate(nextDue.getDate() + 1); break
+        case 'weekly': nextDue.setDate(nextDue.getDate() + 7); break
+        case 'biweekly': nextDue.setDate(nextDue.getDate() + 14); break
+        case 'monthly': nextDue.setMonth(nextDue.getMonth() + 1); break
+        case 'quarterly': nextDue.setMonth(nextDue.getMonth() + 3); break
+        case 'yearly': nextDue.setFullYear(nextDue.getFullYear() + 1); break
+        default: nextDue.setDate(nextDue.getDate() + 7); break
+      }
+
+      // Check if next due is past the end date
+      const shouldCreate = !rule.endDate || nextDue <= new Date(rule.endDate)
+
+      if (shouldCreate) {
+        const nextDueStr = nextDue.toISOString().slice(0, 16)
+        const newTask = await c.env.DB.prepare(`
+          INSERT INTO tasks (title, description, status, priority, project_id, client_id, due_date,
+            estimated_hours, tags, is_visible_to_client, process_id, created_by, created_by_type,
+            is_recurring, recurrence_rule)
+          VALUES (?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        `).bind(
+          task.title, task.description || null, task.priority,
+          task.project_id, task.client_id, nextDueStr,
+          task.estimated_hours, task.tags, task.is_visible_to_client,
+          task.process_id, c.get('entityId'),
+          c.get('userType') === 'client' ? 'client' : 'user',
+          task.recurrence_rule
+        ).run()
+        nextTaskId = newTask.meta.last_row_id as number
+
+        // Copy assignees to the new task
+        const assigneeRows = await c.env.DB.prepare(
+          'SELECT user_id, role FROM task_assignments WHERE task_id = ?'
+        ).bind(id).all()
+        for (const a of assigneeRows.results) {
+          await c.env.DB.prepare(
+            'INSERT OR IGNORE INTO task_assignments (task_id, user_id, role, assigned_by) VALUES (?, ?, ?, ?)'
+          ).bind(nextTaskId, (a as any).user_id, (a as any).role, c.get('entityId')).run()
+        }
+
+        // Activity log for auto-generated task
+        await c.env.DB.prepare(
+          'INSERT INTO activity_log (task_id, actor_id, actor_type, action, details) VALUES (?, ?, ?, ?, ?)'
+        ).bind(nextTaskId, c.get('entityId'), c.get('userType') === 'client' ? 'client' : 'user',
+          'created', JSON.stringify({ title: task.title, recurring_from: id })).run()
+      }
+    } catch (e) {
+      // Don't fail the status update if recurring generation fails
+      console.error('Failed to generate next recurring task:', e)
+    }
+  }
+
   fields.push('updated_at = datetime("now")')
 
   if (fields.length > 1) {
@@ -445,7 +510,7 @@ apiRoutes.put('/tasks/:id', async (c) => {
     'INSERT INTO activity_log (task_id, actor_id, actor_type, action, details) VALUES (?, ?, ?, ?, ?)'
   ).bind(id, c.get('entityId'), actorType, 'updated', JSON.stringify(changes)).run()
 
-  return c.json({ success: true })
+  return c.json({ success: true, nextRecurringTaskId: nextTaskId })
 })
 
 // Delete task
@@ -1064,6 +1129,7 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
 
   const tasks = await c.env.DB.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.due_date, t.client_id,
+      t.is_recurring, t.recurrence_rule,
       p.name as project_name, p.color as project_color,
       cl.company_name as client_name,
       (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
@@ -1089,6 +1155,7 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
 
   const unscheduled = await c.env.DB.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.due_date, t.client_id,
+      t.is_recurring, t.recurrence_rule,
       p.name as project_name, p.color as project_color,
       cl.company_name as client_name,
       (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names

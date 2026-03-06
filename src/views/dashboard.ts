@@ -410,7 +410,7 @@ function renderAgendaView() {
       html += '<div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer group" onclick="loadTaskDetail('+t.id+')">' +
         '<div class="w-2 h-2 rounded-full flex-shrink-0 '+(isDone?'bg-gray-300':dot)+'"></div>' +
         '<button onclick="event.stopPropagation();quickStatusCal('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(isDone?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400 group-hover:border-indigo-300')+' flex items-center justify-center text-xs transition-colors" title="'+(isDone?'Mark incomplete':'Mark complete')+'">'+(isDone?'<i class="fas fa-check text-[9px]"></i>':'')+'</button>' +
-        '<div class="flex-1 min-w-0"><span class="text-sm '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+assigneePrefix+esc(t.title)+'</span>' +
+        '<div class="flex-1 min-w-0"><span class="text-sm '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+assigneePrefix+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1 text-[9px]" title="Recurring"></i>':'')+'</span>' +
         (t.project_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.project_name)+'</span>' : '') +
         (t.client_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.client_name)+'</span>' : '') +
         '</div>' +
@@ -448,8 +448,12 @@ function renderAgendaView() {
 
 async function quickStatusCal(id, current) {
   const next = current === 'done' ? 'todo' : 'done';
-  await API.put('/api/tasks/' + id, { status: next });
-  await loadCalendarTasks(); await loadDashboard(); render();
+  const res = await API.put('/api/tasks/' + id, { status: next });
+  if (next === 'done' && res && res.nextRecurringTaskId) {
+    // A new recurring occurrence was created
+  }
+  await Promise.all([loadCalendarTasks(), loadDashboard(), loadTasks()]);
+  render();
 }
 
 function addTaskOnDate(dateStr) {
@@ -524,7 +528,7 @@ function renderCalendarView() {
         const isDone = t.status === 'done';
         const prioColors = {urgent:'bg-red-500',high:'bg-orange-400',medium:'bg-indigo-400',low:'bg-green-400'};
         const bg = isDone ? 'bg-gray-200 text-gray-400 line-through' : (prioColors[t.priority] ? prioColors[t.priority].replace('bg-','bg-')+'/15 text-gray-700' : 'bg-indigo-50 text-gray-700');
-        html += '<div onclick="event.stopPropagation();loadTaskDetail('+t.id+')" class="text-[10px] md:text-xs truncate rounded px-1 py-0.5 '+(isDone?'bg-gray-100 text-gray-400 line-through':'bg-indigo-50 text-gray-700 hover:bg-indigo-100')+' leading-tight" title="'+esc(t.title)+'">'+esc(t.title)+'</div>';
+        html += '<div onclick="event.stopPropagation();loadTaskDetail('+t.id+')" class="text-[10px] md:text-xs truncate rounded px-1 py-0.5 '+(isDone?'bg-gray-100 text-gray-400 line-through':'bg-indigo-50 text-gray-700 hover:bg-indigo-100')+' leading-tight" title="'+esc(t.title)+(t.is_recurring?' (Recurring)':'')+'">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-0.5" style="font-size:7px"></i>':'')+'</div>';
       });
       if (dayTasks.length > 3) {
         html += '<div class="text-[10px] text-gray-400 px-1">+'+(dayTasks.length-3)+' more</div>';
@@ -751,7 +755,7 @@ function renderTaskList() {
       const assigneeNames = assignees.map(a => a.user_name).join(', ');
       return '<!-- Desktop row -->' +
         '<div class="task-row hidden md:grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')">' +
-        '<div class="col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
+        '<div class="col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1.5 text-[10px]" title="Recurring task"></i>':'')+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
         '<div class="col-span-2"><div class="text-xs">'+(t.project_name?'<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:'+esc(t.project_color||'#6366f1')+'"></span>'+esc(t.project_name)+'</span>':'')+'</div><div class="text-xs text-gray-400">'+(t.client_name||'')+'</div></div>' +
         '<div class="col-span-1">'+priorityIcon(t.priority)+' <span class="text-xs capitalize text-gray-500">'+t.priority+'</span></div>' +
         '<div class="col-span-1"><span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span></div>' +
@@ -764,7 +768,7 @@ function renderTaskList() {
         '<div class="flex items-start gap-3">' +
         '<button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 active:border-indigo-400')+' flex items-center justify-center" style="width:28px;height:28px;margin-top:2px">'+(t.status==='done'?'<i class="fas fa-check text-xs"></i>':'')+'</button>' +
         '<div class="flex-1 min-w-0">' +
-        '<div class="text-[15px] font-medium leading-snug '+(t.status==='done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</div>' +
+        '<div class="text-[15px] font-medium leading-snug '+(t.status==='done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1.5 text-[10px]" title="Recurring task"></i>':'')+'</div>' +
         '<div class="flex flex-wrap gap-2 mt-2 items-center">' +
         '<span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>' +
         priorityIcon(t.priority) +
@@ -821,7 +825,8 @@ async function handleDrop(e, newStatus) {
 async function quickStatus(id, current) {
   const next = current === 'done' ? 'todo' : 'done';
   await API.put('/api/tasks/' + id, { status: next });
-  await loadTasks(); render();
+  await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
+  render();
 }
 
 function handleSearch(e) {
@@ -847,6 +852,7 @@ function renderTaskModal() {
     '<div class="flex items-center gap-3">' +
     '<span class="status-badge '+statusColor(t.status)+' cursor-pointer" onclick="cycleStatus()">'+t.status.replace('_',' ')+'</span>' +
     priorityIcon(t.priority) +
+    (t.is_recurring?'<span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-1 rounded-full"><i class="fas fa-redo mr-1"></i>Recurring</span>':'') +
     (t.project_name?'<span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full"><span class="w-2 h-2 rounded-full inline-block mr-1" style="background:'+esc(t.project_color)+'"></span>'+esc(t.project_name)+'</span>':'') +
     (t.client_name?'<span class="text-xs text-gray-500">'+esc(t.client_name)+'</span>':'') +
     '</div>' +
@@ -865,6 +871,29 @@ function renderTaskModal() {
     ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><select onchange="updateTaskField('+t.id+',&apos;client_id&apos;,this.value||null);S.selectedTask.client_id=this.value?parseInt(this.value):null;S.selectedTask.client_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(t.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select></div>' : (t.client_name ? '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><div class="text-sm text-gray-700 py-2">'+esc(t.client_name)+'</div></div>' : '')) +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Project</label><select onchange="updateTaskField('+t.id+',&apos;project_id&apos;,this.value||null);S.selectedTask.project_id=this.value?parseInt(this.value):null;S.selectedTask.project_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(t.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Est. Hours</label><input type="number" value="'+(t.estimated_hours||'')+'" onchange="updateTaskField('+t.id+',&apos;estimated_hours&apos;,parseFloat(this.value))" class="w-full text-sm border rounded-lg px-3 py-2" step="0.5"></div></div>' +
+    // Recurrence settings
+    (function() {
+      var rule = null;
+      try { rule = t.recurrence_rule ? (typeof t.recurrence_rule === 'string' ? JSON.parse(t.recurrence_rule) : t.recurrence_rule) : null; } catch(e) {}
+      var freq = rule ? rule.frequency : 'weekly';
+      var endD = rule && rule.endDate ? rule.endDate : '';
+      var freqLabels = {daily:'Daily',weekly:'Weekly',biweekly:'Every 2 Weeks',monthly:'Monthly',quarterly:'Every 3 Months',yearly:'Yearly'};
+      return '<div class="mb-6 border rounded-lg p-4 '+(t.is_recurring?'bg-indigo-50 border-indigo-200':'bg-gray-50 border-gray-200')+'">' +
+        '<label class="flex items-center gap-2 cursor-pointer mb-'+(t.is_recurring?'3':'0')+'">' +
+        '<input type="checkbox" '+(t.is_recurring?'checked':'')+' onchange="toggleRecurring('+t.id+',this.checked)" class="w-4 h-4 text-indigo-600 rounded border-gray-300">' +
+        '<span class="text-sm font-medium '+(t.is_recurring?'text-indigo-700':'text-gray-600')+'"><i class="fas fa-redo '+(t.is_recurring?'text-indigo-500':'text-gray-400')+' mr-1"></i>Recurring Task</span>' +
+        (t.is_recurring ? '<span class="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full ml-auto">'+(freqLabels[freq]||freq)+'</span>' : '') +
+        '</label>' +
+        (t.is_recurring ? '<div class="grid grid-cols-2 gap-3">' +
+          '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Frequency</label>' +
+          '<select onchange="updateRecurrenceRule('+t.id+',&apos;frequency&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2">' +
+          ['daily','weekly','biweekly','monthly','quarterly','yearly'].map(function(f){return '<option value="'+f+'"'+(freq===f?' selected':'')+'>'+freqLabels[f]+'</option>';}).join('') +
+          '</select></div>' +
+          '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">End Date</label>' +
+          '<input type="date" value="'+endD+'" onchange="updateRecurrenceRule('+t.id+',&apos;endDate&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
+          '</div>' : '') +
+        '</div>';
+    })() +
     // Assignees
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Assignees</label><div class="flex flex-wrap gap-2">' +
     assignees.map(a => '<div class="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1.5">'+avatar(a.user_name,'w-6 h-6 text-[10px]')+'<span class="text-sm">'+esc(a.user_name)+'</span><button onclick="removeAssignee('+t.id+','+a.user_id+')" class="text-gray-400 hover:text-red-500 text-xs"><i class="fas fa-times"></i></button></div>').join('') +
@@ -900,6 +929,24 @@ function renderTaskModal() {
 async function updateTaskField(id, field, value) {
   await API.put('/api/tasks/' + id, { [field]: value });
   if (field === 'status' || field === 'priority' || field === 'client_id' || field === 'project_id') { await loadTasks(); }
+}
+
+async function toggleRecurring(taskId, isRecurring) {
+  var rule = isRecurring ? { frequency: 'weekly', endDate: null } : null;
+  await API.put('/api/tasks/' + taskId, {
+    is_recurring: isRecurring ? 1 : 0,
+    recurrence_rule: rule,
+  });
+  await loadTaskDetail(taskId);
+}
+
+async function updateRecurrenceRule(taskId, field, value) {
+  var t = S.selectedTask;
+  var rule = null;
+  try { rule = t.recurrence_rule ? (typeof t.recurrence_rule === 'string' ? JSON.parse(t.recurrence_rule) : t.recurrence_rule) : {}; } catch(e) { rule = {}; }
+  rule[field] = value || null;
+  await API.put('/api/tasks/' + taskId, { recurrence_rule: rule });
+  await loadTaskDetail(taskId);
 }
 
 async function addAssignee(taskId, userId) {
@@ -993,8 +1040,18 @@ async function cycleStatus() {
   const order = ['todo','in_progress','review','done'];
   const idx = order.indexOf(S.selectedTask.status);
   const next = order[(idx + 1) % order.length];
-  await updateTaskField(S.selectedTask.id, 'status', next);
+  const res = await API.put('/api/tasks/' + S.selectedTask.id, { status: next });
   S.selectedTask.status = next;
+  if (next === 'done' && S.selectedTask.is_recurring && res && res.nextRecurringTaskId) {
+    // Brief notification about next occurrence
+    var rule = null;
+    try { rule = S.selectedTask.recurrence_rule ? (typeof S.selectedTask.recurrence_rule === 'string' ? JSON.parse(S.selectedTask.recurrence_rule) : S.selectedTask.recurrence_rule) : null; } catch(e) {}
+    var freqLabel = rule ? ({daily:'tomorrow',weekly:'next week',biweekly:'in 2 weeks',monthly:'next month',quarterly:'in 3 months',yearly:'next year'}[rule.frequency] || 'later') : 'later';
+    alert('Recurring task completed! Next occurrence created for ' + freqLabel + '.');
+    await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
+  } else if (next === 'done' || next === 'todo') {
+    await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
+  }
   render();
 }
 
@@ -1014,6 +1071,13 @@ function renderNewTaskModal() {
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Project</label><select id="nt_project" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Assign To</label><select id="nt_assignee" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Unassigned</option>'+S.users.map(u=>'<option value="'+u.id+'">'+esc(u.name)+(u.department||u.role ? ' ('+esc(u.department||u.role)+')' : '')+'</option>').join('')+'</select></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Tags</label><input type="text" id="nt_tags" class="w-full text-sm border rounded-lg px-3 py-2" placeholder="design, urgent, frontend (comma separated)"></div>' +
+    // Recurring task toggle
+    '<div class="border-t pt-4 mt-2">' +
+    '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="nt_recurring" onchange="document.getElementById(\'nt_recurrence_options\').classList.toggle(\'hidden\',!this.checked)" class="w-4 h-4 text-indigo-600 rounded border-gray-300"><span class="text-sm font-medium text-gray-700"><i class="fas fa-redo text-indigo-400 mr-1"></i>Make this a recurring task</span></label>' +
+    '<div id="nt_recurrence_options" class="hidden mt-3 space-y-3 pl-6 border-l-2 border-indigo-100">' +
+    '<div><label class="text-sm font-medium text-gray-600 mb-1 block">Repeat</label><select id="nt_frequency" class="w-full text-sm border rounded-lg px-3 py-2"><option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option><option value="quarterly">Every 3 Months</option><option value="yearly">Yearly</option></select></div>' +
+    '<div><label class="text-sm font-medium text-gray-600 mb-1 block">End Date <span class="text-gray-400 font-normal">(optional)</span></label><input type="date" id="nt_recurrence_end" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
+    '</div></div>' +
     '<div class="flex justify-end gap-3 pt-2"><button type="button" onclick="S.showNewTaskModal=false;render()" class="px-4 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>Create Task</button></div>' +
     '</form></div></div>';
 }
@@ -1579,6 +1643,12 @@ function bindEvents() {
       const tagsStr = document.getElementById('nt_tags').value;
       const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
       
+      const isRecurring = document.getElementById('nt_recurring')?.checked || false;
+      const recurrenceRule = isRecurring ? {
+        frequency: document.getElementById('nt_frequency')?.value || 'weekly',
+        endDate: document.getElementById('nt_recurrence_end')?.value || null,
+      } : null;
+
       await API.post('/api/tasks', {
         title: document.getElementById('nt_title').value,
         description: document.getElementById('nt_desc').value,
@@ -1588,6 +1658,8 @@ function bindEvents() {
         project_id: document.getElementById('nt_project').value || null,
         tags,
         assignees: assigneeId ? [{ user_id: parseInt(assigneeId), role: 'assignee' }] : [],
+        is_recurring: isRecurring ? 1 : 0,
+        recurrence_rule: recurrenceRule,
       });
       S.showNewTaskModal = false;
       S.newTaskDate = null;
