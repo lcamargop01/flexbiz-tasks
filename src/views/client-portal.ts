@@ -133,7 +133,7 @@ function render() {
 function renderBottomTabs() {
   const tabs = [{id:'dashboard',icon:'fas fa-th-large',label:'Overview'},{id:'tasks',icon:'fas fa-tasks',label:'Tasks'},{id:'projects',icon:'fas fa-project-diagram',label:'Projects'},{id:'notifications',icon:'fas fa-bell',label:'Alerts'}];
   return '<div class="client-bottom-tabs">' +
-    tabs.map(t=>'<button onclick="CS.tab=\''+t.id+'\';render()" class="'+(CS.tab===t.id?'active':'')+'">' +
+    tabs.map(t=>'<button onclick="CS.tab=&#39;'+t.id+'&#39;;render()" class="'+(CS.tab===t.id?'active':'')+'">' +
       '<i class="'+t.icon+' tab-icon"></i>' +
       (t.id==='notifications'&&CS.unreadCount>0?'<span class="tab-badge">'+CS.unreadCount+'</span>':'') +
       '<span>'+t.label+'</span></button>').join('') +
@@ -152,13 +152,13 @@ function renderHeader() {
   return '<header class="bg-white border-b shadow-sm sticky top-0 z-20"><div class="max-w-6xl mx-auto px-3 md:px-4 py-2 md:py-3 flex items-center justify-between">' +
     '<div class="flex items-center gap-2 md:gap-3"><div class="w-8 h-8 md:w-9 md:h-9 bg-sky-600 rounded-lg flex items-center justify-center"><i class="fas fa-handshake text-white text-xs md:text-sm"></i></div><div><div class="font-bold text-gray-800 text-sm">FlexBiz</div><div class="text-[10px] md:text-xs text-gray-500">Client Portal</div></div></div>' +
     '<div class="flex items-center gap-2 md:gap-4"><div class="hidden md:block">'+companyLabel+'</div>' +
-    '<button onclick="CS.tab=\'notifications\';render()" class="relative flex items-center justify-center" style="width:40px;height:40px"><i class="fas fa-bell text-gray-500"></i>'+(CS.unreadCount>0?'<span class="absolute top-0 right-0 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">'+CS.unreadCount+'</span>':'')+'</button>' +
+    '<button onclick="CS.tab=&#39;notifications&#39;;render()" class="relative flex items-center justify-center" style="width:40px;height:40px"><i class="fas fa-bell text-gray-500"></i>'+(CS.unreadCount>0?'<span class="absolute top-0 right-0 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">'+CS.unreadCount+'</span>':'')+'</button>' +
     '<button onclick="clientLogout()" class="text-gray-400 hover:text-gray-600 flex items-center justify-center" style="width:40px;height:40px"><i class="fas fa-sign-out-alt"></i></button></div></div></header>';
 }
 
 function renderTabs() {
   const tabs = [{id:'dashboard',icon:'fas fa-th-large',label:'Overview'},{id:'tasks',icon:'fas fa-tasks',label:'Tasks'},{id:'projects',icon:'fas fa-project-diagram',label:'Projects'},{id:'notifications',icon:'fas fa-bell',label:'Notifications'}];
-  return '<div class="desktop-tabs flex gap-1 mb-6 border-b"><div class="flex overflow-x-auto">'+tabs.map(t=>'<button onclick="CS.tab=\''+t.id+'\';render()" class="px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors '+(CS.tab===t.id?'border-sky-500 text-sky-600':'border-transparent text-gray-500 hover:text-gray-700')+'"><i class="'+t.icon+' mr-2"></i>'+t.label+(t.id==='notifications'&&CS.unreadCount>0?' <span class="bg-red-500 text-white text-[10px] px-1.5 rounded-full ml-1">'+CS.unreadCount+'</span>':'')+'</button>').join('')+'</div></div>';
+  return '<div class="desktop-tabs flex gap-1 mb-6 border-b"><div class="flex overflow-x-auto">'+tabs.map(t=>'<button onclick="CS.tab=&#39;'+t.id+'&#39;;render()" class="px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors '+(CS.tab===t.id?'border-sky-500 text-sky-600':'border-transparent text-gray-500 hover:text-gray-700')+'"><i class="'+t.icon+' mr-2"></i>'+t.label+(t.id==='notifications'&&CS.unreadCount>0?' <span class="bg-red-500 text-white text-[10px] px-1.5 rounded-full ml-1">'+CS.unreadCount+'</span>':'')+'</button>').join('')+'</div></div>';
 }
 
 function renderContent() {
@@ -221,7 +221,7 @@ function renderQuickAdd() {
       '</div>' +
       '<div class="flex flex-col sm:flex-row gap-3 justify-center mt-6">' +
       '<button onclick="CS.quickAddResult=null;render()" class="bg-sky-600 text-white px-6 py-3 rounded-lg text-sm font-semibold hover:bg-sky-700"><i class="fas fa-plus mr-2"></i>Add More Tasks</button>' +
-      '<button onclick="CS.quickAddResult=null;CS.showQuickAdd=false;CS.tab=\'tasks\';loadTasks().then(render)" class="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg text-sm font-semibold hover:bg-gray-50"><i class="fas fa-list mr-2"></i>View Tasks</button>' +
+      '<button onclick="CS.quickAddResult=null;CS.showQuickAdd=false;CS.tab=&#39;tasks&#39;;loadTasks().then(render)" class="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg text-sm font-semibold hover:bg-gray-50"><i class="fas fa-list mr-2"></i>View Tasks</button>' +
       '</div></div></div>';
   }
 
@@ -237,7 +237,7 @@ function renderQuickAdd() {
     'Indent a line with tab/spaces to add a description to the task above it.</div></div>' +
     // Textarea
     '<div class="mb-4">' +
-    '<textarea id="qa_text" class="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-colors" rows="8" placeholder="Paste your task list here...\n\nExamples:\n- Review contracts for Lion MDs\n- File quarterly taxes\n    Need W2 forms from payroll\n- Order new office supplies\n- Schedule dentist appointment" style="min-height:180px;font-size:15px !important"></textarea>' +
+    '<textarea id="qa_text" class="w-full border-2 border-gray-200 rounded-xl p-4 text-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition-colors" rows="8" placeholder="Paste your task list here...&#10;&#10;Examples:&#10;- Review contracts for Lion MDs&#10;- File quarterly taxes&#10;    Need W2 forms from payroll&#10;- Order new office supplies&#10;- Schedule dentist appointment" style="min-height:180px;font-size:15px !important"></textarea>' +
     '</div>' +
     // Options row
     '<div class="flex flex-col sm:flex-row gap-3 mb-4">' +
@@ -316,7 +316,7 @@ function renderClientProjects() {
   return '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">' +
     CS.projects.map(p => {
       const pct = p.task_count > 0 ? Math.round((p.done_count / p.task_count) * 100) : 0;
-      return '<div class="bg-white rounded-xl border p-5 cursor-pointer hover:shadow-md transition-shadow" onclick="CS.filters.project_id=\''+p.id+'\';CS.tab=\'tasks\';loadTasks().then(render)">' +
+      return '<div class="bg-white rounded-xl border p-5 cursor-pointer hover:shadow-md transition-shadow" onclick="CS.filters.project_id=&#39;'+p.id+'&#39;;CS.tab=&#39;tasks&#39;;loadTasks().then(render)">' +
         '<div class="flex items-center gap-2 mb-2"><h3 class="font-bold flex-1" style="color:'+esc(p.color||'#0ea5e9')+'">'+esc(p.name)+'</h3>'+(CS.hasMultiCompany && p.client_name ? companyChip(p.client_name) : '')+'</div>' +
         (p.description?'<p class="text-sm text-gray-600 mb-3">'+esc(p.description)+'</p>':'') +
         '<div class="flex items-center gap-3"><div class="flex-1 bg-gray-200 rounded-full h-2"><div class="bg-sky-500 rounded-full h-2" style="width:'+pct+'%"></div></div><span class="text-xs text-gray-500">'+pct+'%</span></div>' +
@@ -342,7 +342,7 @@ function renderTaskDetail() {
     '<h2 class="text-xl font-bold mb-3">'+esc(t.title)+'</h2>' +
     (t.description?'<p class="text-sm text-gray-600 mb-4 whitespace-pre-wrap">'+esc(t.description)+'</p>':'') +
     '<div class="grid grid-cols-2 gap-4 mb-6">' +
-    '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Status</label><select onchange="updateClientTask('+t.id+',\'status\',this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
+    '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Status</label><select onchange="updateClientTask('+t.id+',&#39;status&#39;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 block mb-1">Due Date</label><div class="text-sm">'+dueLabel(t.due_date)+'</div></div></div>' +
     // Subtasks
     (t.subtasks?.length?'<div class="mb-6"><h3 class="text-sm font-bold text-gray-700 mb-2">Subtasks</h3><div class="space-y-1">'+t.subtasks.map(s=>'<div class="flex items-center gap-2 p-2 rounded bg-gray-50"><div class="w-4 h-4 rounded-full border '+(s.status==='done'?'bg-green-500 border-green-500':'border-gray-300')+'"></div><span class="text-sm '+(s.status==='done'?'line-through text-gray-400':'')+'">'+esc(s.title)+'</span></div>').join('')+'</div></div>':'') +
