@@ -74,9 +74,9 @@ apiRoutes.get('/tasks', async (c) => {
     where.push('t.is_visible_to_client = 1')
   }
 
-  // Employees can only see tasks assigned to them or created by them
+  // Employees can only see tasks assigned to them, or unassigned tasks they created
   if (c.get('userRole') === 'employee') {
-    where.push('(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?)')
+    where.push('(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments)))')
     params.push(c.get('entityId'), c.get('entityId'))
   }
 
@@ -1064,9 +1064,10 @@ apiRoutes.get('/dashboard', async (c) => {
 
   const isEmployee = c.get('userRole') === 'employee'
   const uid = c.get('entityId')
-  // Dashboard: ALL users (even admin) only see their own assigned/created tasks
-  const myFilter = ' AND (id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR created_by = ' + uid + ')'
-  const myFilterAlias = ' AND (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR t.created_by = ' + uid + ')'
+  // Dashboard: ALL users see only tasks assigned to them, OR unassigned tasks they created
+  // If a task has assignees, only those assignees see it — the creator does NOT unless also assigned
+  const myFilter = ' AND (id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR (created_by = ' + uid + ' AND id NOT IN (SELECT task_id FROM task_assignments)))'
+  const myFilterAlias = ' AND (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR (t.created_by = ' + uid + ' AND t.id NOT IN (SELECT task_id FROM task_assignments)))'
 
   // Optional client filter for admin/manager dashboard
   const clientFilter = c.req.query('client_id')
@@ -1095,7 +1096,7 @@ apiRoutes.get('/dashboard', async (c) => {
       LEFT JOIN tasks t ON al.task_id = t.id
       LEFT JOIN users u ON al.actor_type = 'user' AND al.actor_id = u.id
       LEFT JOIN clients cl ON al.actor_type = 'client' AND al.actor_id = cl.id
-      WHERE al.task_id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR al.task_id IN (SELECT id FROM tasks WHERE created_by = ?)
+      WHERE al.task_id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR al.task_id IN (SELECT id FROM tasks WHERE created_by = ? AND id NOT IN (SELECT task_id FROM task_assignments))
       ORDER BY al.created_at DESC LIMIT 20
     `).bind(uid, uid).all(),
   ])
@@ -1129,8 +1130,8 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
     whereClause = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?`
     params = [...cIds, start, end]
   } else {
-    // ALL users (even admin) see only their assigned/created tasks on dashboard calendar
-    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?${clientExtra}`
+    // ALL users (even admin) see only their assigned tasks, or unassigned tasks they created
+    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments))) AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?${clientExtra}`
     params = [uid, uid, start, end]
   }
 
@@ -1156,7 +1157,7 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
     noDateWhere = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
     noDateParams = [...cIds]
   } else {
-    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')${clientExtra}`
+    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments))) AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')${clientExtra}`
     noDateParams = [uid, uid]
   }
 
