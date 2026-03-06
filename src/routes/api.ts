@@ -74,6 +74,12 @@ apiRoutes.get('/tasks', async (c) => {
     where.push('t.is_visible_to_client = 1')
   }
 
+  // Employees can only see tasks assigned to them or created by them
+  if (c.get('userRole') === 'employee') {
+    where.push('(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?)')
+    params.push(c.get('entityId'), c.get('entityId'))
+  }
+
   if (hide_done === '1') { where.push('t.status NOT IN ("done","cancelled")') }
   if (status) { where.push('t.status = ?'); params.push(status) }
   if (priority) { where.push('t.priority = ?'); params.push(priority) }
@@ -161,6 +167,16 @@ apiRoutes.get('/tasks/:id', async (c) => {
   if (c.get('userType') === 'client') {
     const cIds = c.get('clientIds') || [c.get('entityId')]
     if (!cIds.includes(task.client_id as number) || !task.is_visible_to_client) {
+      return c.json({ error: 'Access denied' }, 403)
+    }
+  }
+
+  // Employee access check: must be assigned to or have created the task
+  if (c.get('userRole') === 'employee') {
+    const isAssigned = await c.env.DB.prepare(
+      'SELECT 1 FROM task_assignments WHERE task_id = ? AND user_id = ?'
+    ).bind(id, c.get('entityId')).first()
+    if (!isAssigned && task.created_by !== c.get('entityId')) {
       return c.json({ error: 'Access denied' }, 403)
     }
   }
@@ -599,6 +615,13 @@ apiRoutes.get('/projects', async (c) => {
     where.push(`p.client_id IN (${ph})`)
     params.push(...cIds)
   }
+
+  // Employees only see projects that have tasks assigned to them
+  if (c.get('userRole') === 'employee') {
+    where.push('p.id IN (SELECT DISTINCT t.project_id FROM tasks t JOIN task_assignments ta ON ta.task_id = t.id WHERE ta.user_id = ? AND t.project_id IS NOT NULL UNION SELECT DISTINCT t2.project_id FROM tasks t2 WHERE t2.created_by = ? AND t2.project_id IS NOT NULL)')
+    params.push(c.get('entityId'), c.get('entityId'))
+  }
+
   if (client_id) { where.push('p.client_id = ?'); params.push(parseInt(client_id)) }
   if (status) { where.push('p.status = ?'); params.push(status) }
 
@@ -659,7 +682,7 @@ apiRoutes.delete('/projects/:id', async (c) => {
 // ==================== CLIENTS ====================
 
 apiRoutes.get('/clients', async (c) => {
-  if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userType') === 'client' || c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
 
   const clients = await c.env.DB.prepare(`
     SELECT c.*,
@@ -757,7 +780,12 @@ apiRoutes.delete('/clients/:id/linked/:linkId', async (c) => {
 // ==================== USERS / TEAM ====================
 
 apiRoutes.get('/users', async (c) => {
+  // Employees can only see users for task assignment purposes (limited fields)
   if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userRole') === 'employee') {
+    const users = await c.env.DB.prepare('SELECT id, name, avatar_url FROM users WHERE is_active = 1 ORDER BY name').all()
+    return c.json({ users: users.results })
+  }
 
   const users = await c.env.DB.prepare(`
     SELECT u.id, u.email, u.name, u.role, u.department, u.avatar_url, u.phone, u.is_active,
@@ -821,7 +849,7 @@ apiRoutes.delete('/users/:id', async (c) => {
 // ==================== PROCESSES ====================
 
 apiRoutes.get('/processes', async (c) => {
-  if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userType') === 'client' || c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   const processes = await c.env.DB.prepare(`
     SELECT p.*, u.name as created_by_name FROM processes p LEFT JOIN users u ON p.created_by = u.id ORDER BY p.name
   `).all()
@@ -831,7 +859,7 @@ apiRoutes.get('/processes', async (c) => {
 })
 
 apiRoutes.post('/processes', async (c) => {
-  if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userType') === 'client' || c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   const { name, description, steps } = await c.req.json()
   const result = await c.env.DB.prepare(
     'INSERT INTO processes (name, description, steps, created_by) VALUES (?, ?, ?, ?)'
@@ -840,7 +868,7 @@ apiRoutes.post('/processes', async (c) => {
 })
 
 apiRoutes.put('/processes/:id', async (c) => {
-  if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userType') === 'client' || c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   const id = parseInt(c.req.param('id'))
   const { name, description, steps } = await c.req.json()
   await c.env.DB.prepare(
@@ -850,7 +878,7 @@ apiRoutes.put('/processes/:id', async (c) => {
 })
 
 apiRoutes.delete('/processes/:id', async (c) => {
-  if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userType') === 'client' || c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   const id = parseInt(c.req.param('id'))
   // Unlink tasks from this process
   await c.env.DB.prepare('UPDATE tasks SET process_id = NULL WHERE process_id = ?').bind(id).run()
@@ -860,7 +888,7 @@ apiRoutes.delete('/processes/:id', async (c) => {
 
 // Apply process template - creates tasks from process steps
 apiRoutes.post('/processes/:id/apply', async (c) => {
-  if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
+  if (c.get('userType') === 'client' || c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   const processId = parseInt(c.req.param('id'))
   const { project_id, client_id, base_due_date } = await c.req.json()
 
@@ -925,6 +953,7 @@ apiRoutes.put('/notifications/read', async (c) => {
 // ==================== GMAIL INTEGRATION ====================
 
 apiRoutes.get('/email-integration', async (c) => {
+  if (c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
 
   const integration = await c.env.DB.prepare(
@@ -935,6 +964,7 @@ apiRoutes.get('/email-integration', async (c) => {
 })
 
 apiRoutes.post('/email-integration/generate-key', async (c) => {
+  if (c.get('userRole') === 'employee') return c.json({ error: 'Access denied' }, 403)
   if (c.get('userType') === 'client') return c.json({ error: 'Access denied' }, 403)
 
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -967,13 +997,19 @@ apiRoutes.get('/dashboard', async (c) => {
     return c.json({ tasksByStatus: tasksByStatus.results, tasksByPriority: tasksByPriority.results, recentTasks: recentTasks.results, overdueTasks: overdueTasks?.count || 0, dueSoonTasks: dueSoonTasks?.count || 0, openTasks: openTasks.results })
   }
 
+  const isEmployee = c.get('userRole') === 'employee'
+  const uid = c.get('entityId')
+  // Employee scoping: only tasks assigned to or created by the employee
+  const empFilter = isEmployee ? ' AND (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR t.created_by = ' + uid + ')' : ''
+  const empFilterNoAlias = isEmployee ? ' AND (id IN (SELECT task_id FROM task_assignments WHERE user_id = ' + uid + ') OR created_by = ' + uid + ')' : ''
+
   const [tasksByStatus, tasksByPriority, overdueTasks, dueSoonTasks, myTasks, recentActivity] = await Promise.all([
-    c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE parent_task_id IS NULL GROUP BY status').all(),
-    c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL GROUP BY priority').all(),
-    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")').first(),
-    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")').first(),
-    // For admin: show all open tasks. For others: show only assigned tasks.
-    c.get('userRole') === 'admin' ?
+    c.env.DB.prepare('SELECT status, COUNT(*) as count FROM tasks WHERE parent_task_id IS NULL' + empFilterNoAlias + ' GROUP BY status').all(),
+    c.env.DB.prepare('SELECT priority, COUNT(*) as count FROM tasks WHERE status NOT IN ("done","cancelled") AND parent_task_id IS NULL' + empFilterNoAlias + ' GROUP BY priority').all(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")' + empFilterNoAlias).first(),
+    c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")' + empFilterNoAlias).first(),
+    // For admin/manager: show all open tasks. For employees: show only assigned/created tasks.
+    (c.get('userRole') === 'admin' || c.get('userRole') === 'manager') ?
     c.env.DB.prepare(`
       SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
         (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
@@ -991,7 +1027,19 @@ apiRoutes.get('/dashboard', async (c) => {
       LEFT JOIN clients cl ON t.client_id = cl.id
       WHERE (t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR t.created_by = ?) AND t.status NOT IN ('done','cancelled')
       ORDER BY t.due_date ASC NULLS LAST LIMIT 15
-    `).bind(c.get('entityId'), c.get('entityId')).all(),
+    `).bind(uid, uid).all(),
+    // Activity: employees only see activity on their tasks
+    isEmployee ?
+    c.env.DB.prepare(`
+      SELECT al.*, t.title as task_title,
+        CASE WHEN al.actor_type = 'user' THEN u.name WHEN al.actor_type = 'client' THEN cl.contact_name ELSE 'System' END as actor_name
+      FROM activity_log al
+      LEFT JOIN tasks t ON al.task_id = t.id
+      LEFT JOIN users u ON al.actor_type = 'user' AND al.actor_id = u.id
+      LEFT JOIN clients cl ON al.actor_type = 'client' AND al.actor_id = cl.id
+      WHERE al.task_id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR al.task_id IN (SELECT id FROM tasks WHERE created_by = ?)
+      ORDER BY al.created_at DESC LIMIT 20
+    `).bind(uid, uid).all() :
     c.env.DB.prepare(`
       SELECT al.*, t.title as task_title,
         CASE WHEN al.actor_type = 'user' THEN u.name WHEN al.actor_type = 'client' THEN cl.contact_name ELSE 'System' END as actor_name

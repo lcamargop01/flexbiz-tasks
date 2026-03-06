@@ -160,8 +160,19 @@ async function init() {
   else if (path.startsWith('/siri-setup')) S.currentPage = 'siri-setup';
   else S.currentPage = 'dashboard';
 
+  // Redirect employees away from admin-only pages
+  const isEmp = S.user?.role === 'employee';
+  const adminOnlyPages = ['clients', 'team', 'processes', 'gmail-setup', 'siri-setup'];
+  if (isEmp && adminOnlyPages.includes(S.currentPage)) {
+    S.currentPage = 'dashboard';
+    history.replaceState(null, '', '/');
+  }
+
   S.loading = true; render();
-  await Promise.all([loadDashboard(), loadTasks(), loadProjects(), loadClients(), loadUsers(), loadProcesses(), loadNotifications()]);
+  const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
+  const loads = [loadDashboard(), loadTasks(), loadProjects(), loadNotifications()];
+  if (isAdmin) { loads.push(loadClients(), loadUsers(), loadProcesses()); } else { loads.push(loadUsers()); }
+  await Promise.all(loads);
   S.loading = false; render();
   
   // Poll notifications every 30s
@@ -169,6 +180,9 @@ async function init() {
 }
 
 function navigate(page) {
+  const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
+  const adminPages = ['clients', 'team', 'processes', 'gmail-setup', 'siri-setup'];
+  if (!isAdmin && adminPages.includes(page)) { page = 'dashboard'; }
   S.currentPage = page;
   S.showTaskModal = false;
   S.showNewTaskModal = false;
@@ -178,8 +192,8 @@ function navigate(page) {
   render();
   if (page === 'tasks') loadTasks();
   if (page === 'projects') loadProjects();
-  if (page === 'clients') loadClients();
-  if (page === 'team') loadUsers();
+  if (page === 'clients' && isAdmin) loadClients();
+  if (page === 'team' && isAdmin) loadUsers();
   if (page === 'notifications') loadNotifications();
 }
 
@@ -223,17 +237,20 @@ function render() {
 }
 
 function renderSidebar() {
-  const links = [
-    {id:'dashboard',icon:'fas fa-th-large',label:'Dashboard'},
-    {id:'tasks',icon:'fas fa-tasks',label:'Tasks'},
-    {id:'projects',icon:'fas fa-project-diagram',label:'Projects'},
-    {id:'clients',icon:'fas fa-building',label:'Clients'},
-    {id:'team',icon:'fas fa-users',label:'Team'},
-    {id:'processes',icon:'fas fa-sitemap',label:'Processes'},
-    {id:'gmail-setup',icon:'fab fa-google',label:'Gmail Setup'},
-    {id:'siri-setup',icon:'fas fa-microphone-alt',label:'Siri Setup'},
-    {id:'settings',icon:'fas fa-cog',label:'Settings'},
+  const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
+  const allLinks = [
+    {id:'dashboard',icon:'fas fa-th-large',label:'Dashboard', everyone: true},
+    {id:'tasks',icon:'fas fa-tasks',label:'Tasks', everyone: true},
+    {id:'projects',icon:'fas fa-project-diagram',label:'Projects', everyone: true},
+    {id:'clients',icon:'fas fa-building',label:'Clients', adminOnly: true},
+    {id:'team',icon:'fas fa-users',label:'Team', adminOnly: true},
+    {id:'processes',icon:'fas fa-sitemap',label:'Processes', adminOnly: true},
+    {id:'gmail-setup',icon:'fab fa-google',label:'Gmail Setup', adminOnly: true},
+    {id:'siri-setup',icon:'fas fa-microphone-alt',label:'Siri Setup', adminOnly: true},
+    {id:'notifications',icon:'fas fa-bell',label:'Notifications', everyone: true},
+    {id:'settings',icon:'fas fa-cog',label:'Settings', everyone: true},
   ];
+  const links = allLinks.filter(l => l.everyone || (l.adminOnly && isAdmin));
   return '<div class="sidebar-desktop fixed left-0 top-0 bottom-0 w-64 bg-sidebar text-white z-30 flex flex-col">' +
     '<div class="p-5 border-b border-white/10"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center"><i class="fas fa-tasks text-lg"></i></div><div><div class="font-bold text-sm">FlexBiz Solutions</div><div class="text-xs text-indigo-300">Task Manager</div></div></div></div>' +
     '<nav class="flex-1 p-3 space-y-1 overflow-y-auto">' +
@@ -248,11 +265,18 @@ function renderSidebar() {
 }
 
 function renderBottomNav() {
-  const navItems = [
+  const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
+  const navItems = isAdmin ? [
     {id:'dashboard',icon:'fas fa-th-large',label:'Home'},
     {id:'tasks',icon:'fas fa-tasks',label:'Tasks'},
     {id:'projects',icon:'fas fa-project-diagram',label:'Projects'},
     {id:'clients',icon:'fas fa-building',label:'Clients'},
+    {id:'settings',icon:'fas fa-ellipsis-h',label:'More'},
+  ] : [
+    {id:'dashboard',icon:'fas fa-th-large',label:'Home'},
+    {id:'tasks',icon:'fas fa-tasks',label:'Tasks'},
+    {id:'projects',icon:'fas fa-project-diagram',label:'Projects'},
+    {id:'notifications',icon:'fas fa-bell',label:'Alerts'},
     {id:'settings',icon:'fas fa-ellipsis-h',label:'More'},
   ];
   return '<div class="mobile-bottom-nav">' +
@@ -301,7 +325,7 @@ function renderDashboardPage() {
     '</div>' +
     '<div class="grid md:grid-cols-2 gap-6">' +
     // My tasks (admin sees all, others see assigned)
-    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-'+(S.user?.role==='admin'?'tasks':'user-check')+' text-indigo-500"></i>'+(S.user?.role==='admin'?'All Open Tasks':'My Tasks')+'</h3>' +
+    '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-'+(S.user?.role==='admin'||S.user?.role==='manager'?'tasks':'user-check')+' text-indigo-500"></i>'+(S.user?.role==='admin'||S.user?.role==='manager'?'All Open Tasks':'My Tasks')+'</h3>' +
     '<div class="space-y-2">' + ((d.myTasks || []).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No open tasks</p>' :
     (d.myTasks || []).map(t => '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
       priorityIcon(t.priority) +
@@ -450,9 +474,9 @@ function renderTasksPage() {
     '<div class="'+(S.showFilters===false?'hidden md:flex':'flex')+' flex-wrap items-center gap-2">' +
     '<select onchange="S.filters.status=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Statuses</option><option value="todo"'+(S.filters.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(S.filters.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(S.filters.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(S.filters.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(S.filters.status==='done'?' selected':'')+'>Done</option></select>' +
     '<select onchange="S.filters.priority=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Priorities</option><option value="urgent"'+(S.filters.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(S.filters.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(S.filters.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(S.filters.priority==='low'?' selected':'')+'>Low</option></select>' +
-    '<select onchange="S.filters.client_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Clients</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(S.filters.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select>' +
+    ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<select onchange="S.filters.client_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Clients</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(S.filters.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select>' : '') +
     '<select onchange="S.filters.project_id=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Projects</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(S.filters.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>' +
-    '<select onchange="S.filters.assigned_to=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Assignees</option>'+S.users.map(u=>'<option value="'+u.id+'"'+(S.filters.assigned_to==u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>' +
+    ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<select onchange="S.filters.assigned_to=this.value;loadTasks().then(render)" class="text-sm border rounded-lg px-3 py-2 bg-white flex-1 md:flex-none"><option value="">All Assignees</option>'+S.users.map(u=>'<option value="'+u.id+'"'+(S.filters.assigned_to==u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>' : '') +
     (activeFilterCount>0 ? '<button onclick="clearFilters()" class="text-sm text-red-500 hover:text-red-700 px-3 py-2"><i class="fas fa-times mr-1"></i>Clear</button>' : '') +
     '</div></div>' +
     (S.viewMode === 'list' ? renderTaskList() : renderKanban());
@@ -567,7 +591,7 @@ function renderTaskModal() {
     (t.project_name?'<span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full"><span class="w-2 h-2 rounded-full inline-block mr-1" style="background:'+esc(t.project_color)+'"></span>'+esc(t.project_name)+'</span>':'') +
     (t.client_name?'<span class="text-xs text-gray-500">'+esc(t.client_name)+'</span>':'') +
     '</div>' +
-    '<div class="flex items-center gap-1"><button onclick="deleteTask('+t.id+')" class="text-gray-400 hover:text-red-500 flex items-center justify-center" style="width:44px;height:44px" title="Delete"><i class="fas fa-trash text-sm"></i></button><button onclick="S.showTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times text-lg"></i></button></div></div>' +
+    '<div class="flex items-center gap-1">'+((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<button onclick="deleteTask('+t.id+')" class="text-gray-400 hover:text-red-500 flex items-center justify-center" style="width:44px;height:44px" title="Delete"><i class="fas fa-trash text-sm"></i></button>' : '')+'<button onclick="S.showTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times text-lg"></i></button></div></div>' +
     // Body
     '<div class="flex-1 overflow-y-auto p-4 md:p-6" style="-webkit-overflow-scrolling:touch">' +
     // Title (editable)
@@ -579,7 +603,7 @@ function renderTaskModal() {
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Status</label><select onchange="updateTaskField('+t.id+',&apos;status&apos;,this.value);S.selectedTask.status=this.value;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="todo"'+(t.status==='todo'?' selected':'')+'>To Do</option><option value="in_progress"'+(t.status==='in_progress'?' selected':'')+'>In Progress</option><option value="review"'+(t.status==='review'?' selected':'')+'>Review</option><option value="blocked"'+(t.status==='blocked'?' selected':'')+'>Blocked</option><option value="done"'+(t.status==='done'?' selected':'')+'>Done</option></select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Priority</label><select onchange="updateTaskField('+t.id+',&apos;priority&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"><option value="urgent"'+(t.priority==='urgent'?' selected':'')+'>Urgent</option><option value="high"'+(t.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(t.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(t.priority==='low'?' selected':'')+'>Low</option></select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Due Date</label><input type="datetime-local" value="'+(t.due_date?t.due_date.slice(0,16):'')+'" onchange="updateTaskField('+t.id+',&apos;due_date&apos;,this.value)" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
-    '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><select onchange="updateTaskField('+t.id+',&apos;client_id&apos;,this.value||null);S.selectedTask.client_id=this.value?parseInt(this.value):null;S.selectedTask.client_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(t.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select></div>' +
+    ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><select onchange="updateTaskField('+t.id+',&apos;client_id&apos;,this.value||null);S.selectedTask.client_id=this.value?parseInt(this.value):null;S.selectedTask.client_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(t.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select></div>' : (t.client_name ? '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><div class="text-sm text-gray-700 py-2">'+esc(t.client_name)+'</div></div>' : '')) +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Project</label><select onchange="updateTaskField('+t.id+',&apos;project_id&apos;,this.value||null);S.selectedTask.project_id=this.value?parseInt(this.value):null;S.selectedTask.project_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(t.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Est. Hours</label><input type="number" value="'+(t.estimated_hours||'')+'" onchange="updateTaskField('+t.id+',&apos;estimated_hours&apos;,parseFloat(this.value))" class="w-full text-sm border rounded-lg px-3 py-2" step="0.5"></div></div>' +
     // Assignees
@@ -727,9 +751,9 @@ function renderNewTaskModal() {
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Priority</label><select id="nt_priority" class="w-full text-sm border rounded-lg px-3 py-2"><option value="medium">Medium</option><option value="urgent">Urgent</option><option value="high">High</option><option value="low">Low</option></select></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Due Date</label><input type="datetime-local" id="nt_due" class="w-full text-sm border rounded-lg px-3 py-2"></div></div>' +
     '<div class="grid grid-cols-2 gap-4">' +
-    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Client</label><select id="nt_client" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'">'+esc(c.company_name)+'</option>').join('')+'</select></div>' +
+    ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Client</label><select id="nt_client" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'">'+esc(c.company_name)+'</option>').join('')+'</select></div>' : '') +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Project</label><select id="nt_project" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div></div>' +
-    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Assign To</label><select id="nt_assignee" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Unassigned</option>'+S.users.map(u=>'<option value="'+u.id+'">'+esc(u.name)+' ('+esc(u.department||u.role)+')</option>').join('')+'</select></div>' +
+    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Assign To</label><select id="nt_assignee" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Unassigned</option>'+S.users.map(u=>'<option value="'+u.id+'">'+esc(u.name)+(u.department||u.role ? ' ('+esc(u.department||u.role)+')' : '')+'</option>').join('')+'</select></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Tags</label><input type="text" id="nt_tags" class="w-full text-sm border rounded-lg px-3 py-2" placeholder="design, urgent, frontend (comma separated)"></div>' +
     '<div class="flex justify-end gap-3 pt-2"><button type="button" onclick="S.showNewTaskModal=false;render()" class="px-4 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>Create Task</button></div>' +
     '</form></div></div>';
@@ -737,7 +761,8 @@ function renderNewTaskModal() {
 
 // ==================== PROJECTS PAGE ====================
 function renderProjectsPage() {
-  return '<div class="flex justify-between items-center mb-4"><h2 class="text-lg font-bold">Projects</h2><button onclick="showProjectForm()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>New Project</button></div>' +
+  const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
+  return '<div class="flex justify-between items-center mb-4"><h2 class="text-lg font-bold">Projects</h2>'+(isAdmin ? '<button onclick="showProjectForm()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>New Project</button>' : '')+'</div>' +
     '<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">' +
     S.projects.map(p => {
       const pct = p.task_count > 0 ? Math.round((p.done_count / p.task_count) * 100) : 0;
@@ -748,8 +773,8 @@ function renderProjectsPage() {
         '<div class="flex items-center gap-4 mb-3"><div class="flex-1"><div class="bg-gray-200 rounded-full h-2"><div class="bg-indigo-500 rounded-full h-2 transition-all" style="width:'+pct+'%"></div></div></div><span class="text-xs text-gray-500 font-medium">'+p.done_count+'/'+p.task_count+' tasks</span></div>' +
         '<div class="flex items-center gap-2 pt-2 border-t border-gray-100">' +
         '<button onclick="S.filters.project_id=&apos;'+p.id+'&apos;;navigate(&apos;tasks&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800"><i class="fas fa-tasks mr-1"></i>View Tasks</button>' +
-        '<button onclick="event.stopPropagation();showProjectForm(S.projects.find(x=>x.id==='+p.id+'))" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button>' +
-        '<button onclick="event.stopPropagation();deleteProject('+p.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button>' +
+        (isAdmin ? '<button onclick="event.stopPropagation();showProjectForm(S.projects.find(x=>x.id==='+p.id+'))" class="text-xs text-gray-500 hover:text-gray-700 ml-auto"><i class="fas fa-edit mr-1"></i>Edit</button>' +
+        '<button onclick="event.stopPropagation();deleteProject('+p.id+')" class="text-xs text-gray-400 hover:text-red-500"><i class="fas fa-trash mr-1"></i>Delete</button>' : '') +
         '</div></div>';
     }).join('') +
     (S.projects.length === 0 ? '<div class="col-span-full bg-white rounded-xl border p-12 text-center"><i class="fas fa-project-diagram text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">No projects yet</p></div>' : '') +
