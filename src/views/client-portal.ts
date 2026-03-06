@@ -347,7 +347,17 @@ function renderTaskDetail() {
     // Subtasks
     (t.subtasks?.length?'<div class="mb-6"><h3 class="text-sm font-bold text-gray-700 mb-2">Subtasks</h3><div class="space-y-1">'+t.subtasks.map(s=>'<div class="flex items-center gap-2 p-2 rounded bg-gray-50"><div class="w-4 h-4 rounded-full border '+(s.status==='done'?'bg-green-500 border-green-500':'border-gray-300')+'"></div><span class="text-sm '+(s.status==='done'?'line-through text-gray-400':'')+'">'+esc(s.title)+'</span></div>').join('')+'</div></div>':'') +
     // Attachments
-    (t.attachments?.length?'<div class="mb-6"><h3 class="text-sm font-bold text-gray-700 mb-2">Files</h3><div class="space-y-1">'+t.attachments.map(a=>'<div class="flex items-center gap-2 p-2 bg-gray-50 rounded"><i class="fas fa-file text-gray-400"></i><span class="text-sm">'+esc(a.filename)+'</span></div>').join('')+'</div></div>':'') +
+    '<div class="mb-6"><h3 class="text-sm font-bold text-gray-700 mb-2">Files ('+((t.attachments||[]).length)+')</h3>' +
+    '<div class="space-y-1">'+(t.attachments||[]).map(a=>'<div class="flex items-center gap-2 p-2 bg-gray-50 rounded">' +
+      '<i class="fas fa-'+clientFileIcon(a.mime_type||a.filename)+' text-gray-400"></i>' +
+      (a.file_data || (a.file_url && a.file_url.indexOf('/files/')!==-1) ?
+        '<a href="/files/'+a.id+'" target="_blank" class="text-sm text-sky-600 hover:underline flex-1 truncate">'+esc(a.filename)+'</a>' :
+        a.file_url ? '<a href="'+esc(a.file_url)+'" target="_blank" class="text-sm text-sky-600 hover:underline flex-1 truncate">'+esc(a.filename)+'</a>' :
+        '<span class="text-sm flex-1 truncate">'+esc(a.filename)+'</span>') +
+      (a.file_size ? '<span class="text-xs text-gray-400">'+clientFormatSize(a.file_size)+'</span>' : '') +
+      '</div>').join('')+'</div>' +
+    '<div class="mt-2"><label class="flex items-center gap-2 cursor-pointer text-sm text-sky-600 hover:text-sky-800 bg-sky-50 border border-dashed border-sky-300 rounded-lg px-4 py-3 justify-center hover:bg-sky-100 transition-colors"><i class="fas fa-cloud-upload-alt"></i><span>Attach a file</span><input type="file" id="clientFileUpload" class="hidden" onchange="clientUploadFile('+t.id+',this)"></label>' +
+    '<div id="clientUploadProgress" class="hidden mt-2 text-xs text-gray-500 text-center"><i class="fas fa-spinner fa-spin mr-1"></i>Uploading...</div></div></div>' +
     // Comments
     '<div class="mb-4"><h3 class="text-sm font-bold text-gray-700 mb-2">Comments</h3><div class="space-y-3 mb-3">' +
     (t.comments||[]).map(cm=>'<div class="flex gap-3"><div class="w-8 h-8 bg-sky-100 rounded-full flex items-center justify-center text-sky-700 text-xs font-bold flex-shrink-0">'+esc((cm.author_name||'?').charAt(0))+'</div><div><div class="flex items-center gap-2"><span class="text-sm font-semibold">'+esc(cm.author_name)+'</span><span class="text-xs text-gray-400">'+timeAgo(cm.created_at)+'</span></div><div class="text-sm text-gray-700 mt-1">'+esc(cm.content)+'</div></div></div>').join('') +
@@ -366,6 +376,47 @@ async function addClientComment(taskId) {
   await API.post('/api/tasks/'+taskId+'/comments', {content:el.value.trim()});
   el.value='';
   await loadTaskDetail(taskId);
+}
+
+async function clientUploadFile(taskId, input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 8 * 1024 * 1024) { alert('File too large. Maximum 8MB.'); input.value = ''; return; }
+  var prog = document.getElementById('clientUploadProgress');
+  if (prog) prog.classList.remove('hidden');
+  try {
+    var fd = new FormData();
+    fd.append('file', file);
+    var token = localStorage.getItem('flexbiz_client_token');
+    var res = await fetch('/api/tasks/' + taskId + '/attachments', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: fd
+    });
+    if (!res.ok) { var err = await res.json().catch(function(){return {}}); alert(err.error || 'Upload failed'); }
+    else { await loadTaskDetail(taskId); }
+  } catch(e) { alert('Upload failed. Please try again.'); }
+  if (prog) prog.classList.add('hidden');
+  input.value = '';
+}
+
+function clientFileIcon(nameOrMime) {
+  if (!nameOrMime) return 'file';
+  var s = nameOrMime.toLowerCase();
+  if (s.indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(s)) return 'file-image';
+  if (s.indexOf('pdf') !== -1 || /\.pdf$/i.test(s)) return 'file-pdf';
+  if (s.indexOf('word') !== -1 || /\.(doc|docx)$/i.test(s)) return 'file-word';
+  if (s.indexOf('sheet') !== -1 || s.indexOf('excel') !== -1 || /\.(xls|xlsx|csv)$/i.test(s)) return 'file-excel';
+  if (s.indexOf('zip') !== -1 || /\.(zip|rar|7z)$/i.test(s)) return 'file-archive';
+  if (s.indexOf('video') !== -1 || /\.(mp4|mov|avi)$/i.test(s)) return 'file-video';
+  return 'file';
+}
+
+function clientFormatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 function renderNewTask() {

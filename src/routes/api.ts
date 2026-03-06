@@ -953,8 +953,60 @@ apiRoutes.get('/dashboard', async (c) => {
 
 // ==================== ATTACHMENTS ====================
 
+// Ensure file_data column exists (runs once, idempotent)
+async function ensureFileDataColumn(db: D1Database) {
+  try {
+    await db.prepare("SELECT file_data FROM attachments LIMIT 0").all()
+  } catch {
+    await db.prepare("ALTER TABLE attachments ADD COLUMN file_data TEXT").run()
+  }
+}
+
+// Legacy: add attachment by URL
 apiRoutes.post('/tasks/:id/attachments', async (c) => {
   const taskId = parseInt(c.req.param('id'))
+  const contentType = c.req.header('Content-Type') || ''
+
+  // Handle file upload (multipart/form-data)
+  if (contentType.includes('multipart/form-data')) {
+    await ensureFileDataColumn(c.env.DB)
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File | null
+    if (!file || !(file instanceof File)) {
+      return c.json({ error: 'No file provided' }, 400)
+    }
+
+    // Limit to 8MB (D1 row size safety)
+    if (file.size > 8 * 1024 * 1024) {
+      return c.json({ error: 'File too large. Maximum 8MB.' }, 400)
+    }
+
+    const uploaderType = c.get('userType') === 'client' ? 'client' : 'user'
+    const arrayBuf = await file.arrayBuffer()
+    const bytes = new Uint8Array(arrayBuf)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    const base64 = btoa(binary)
+
+    const result = await c.env.DB.prepare(
+      'INSERT INTO attachments (task_id, filename, file_url, file_size, mime_type, uploaded_by, uploaded_by_type, file_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      taskId, file.name, '/api/attachments/{id}/download',
+      file.size, file.type || 'application/octet-stream',
+      c.get('entityId'), uploaderType, base64
+    ).run()
+
+    const attachId = result.meta.last_row_id
+    // Update file_url with actual ID
+    await c.env.DB.prepare('UPDATE attachments SET file_url = ? WHERE id = ?')
+      .bind('/api/attachments/' + attachId + '/download', attachId).run()
+
+    return c.json({ id: attachId, filename: file.name, file_url: '/api/attachments/' + attachId + '/download' }, 201)
+  }
+
+  // Fallback: JSON body with URL reference
   const { filename, file_url, file_size, mime_type } = await c.req.json()
   const uploaderType = c.get('userType') === 'client' ? 'client' : 'user'
 
@@ -963,6 +1015,33 @@ apiRoutes.post('/tasks/:id/attachments', async (c) => {
   ).bind(taskId, filename, file_url, file_size || null, mime_type || null, c.get('entityId'), uploaderType).run()
 
   return c.json({ id: result.meta.last_row_id }, 201)
+})
+
+// Download attachment file
+apiRoutes.get('/attachments/:id/download', async (c) => {
+  const id = parseInt(c.req.param('id'))
+  await ensureFileDataColumn(c.env.DB)
+  const att = await c.env.DB.prepare(
+    'SELECT filename, mime_type, file_data FROM attachments WHERE id = ?'
+  ).bind(id).first() as any
+
+  if (!att || !att.file_data) {
+    return c.json({ error: 'File not found' }, 404)
+  }
+
+  const binary = atob(att.file_data)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+
+  return new Response(bytes.buffer, {
+    headers: {
+      'Content-Type': att.mime_type || 'application/octet-stream',
+      'Content-Disposition': 'inline; filename="' + (att.filename || 'file') + '"',
+      'Cache-Control': 'private, max-age=3600',
+    },
+  })
 })
 
 apiRoutes.delete('/attachments/:id', async (c) => {

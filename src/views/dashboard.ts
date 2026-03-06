@@ -578,8 +578,18 @@ function renderTaskModal() {
     '</div><div class="mt-2 flex gap-2"><input type="text" id="newSubtask" placeholder="Add subtask..." class="flex-1 text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===&apos;Enter&apos;)addSubtask('+t.id+')"><button onclick="addSubtask('+t.id+')" class="text-sm text-indigo-600 hover:text-indigo-800 px-3"><i class="fas fa-plus mr-1"></i>Add</button></div></div>' +
     // Attachments
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Attachments ('+((t.attachments||[]).length)+')</label>' +
-    '<div class="space-y-1">'+(t.attachments||[]).map(a => '<div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"><i class="fas fa-file text-gray-400"></i><span class="text-sm">'+esc(a.filename)+'</span><span class="text-xs text-gray-400 ml-auto">'+timeAgo(a.created_at)+'</span></div>').join('')+'</div>' +
-    '<div class="mt-2"><input type="text" id="attachUrl" placeholder="Paste file URL..." class="w-full text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===&apos;Enter&apos;)addAttachment('+t.id+')"></div></div>' +
+    '<div class="space-y-1">'+(t.attachments||[]).map(a => '<div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg group">' +
+      '<i class="fas fa-'+fileIcon(a.mime_type||a.filename)+' text-gray-400"></i>' +
+      (a.file_data || (a.file_url && a.file_url.indexOf('/files/')!==-1) ?
+        '<a href="/files/'+a.id+'" target="_blank" class="text-sm text-indigo-600 hover:underline flex-1 truncate">'+esc(a.filename)+'</a>' :
+        a.file_url ? '<a href="'+esc(a.file_url)+'" target="_blank" class="text-sm text-indigo-600 hover:underline flex-1 truncate">'+esc(a.filename)+'</a>' :
+        '<span class="text-sm flex-1 truncate">'+esc(a.filename)+'</span>') +
+      (a.file_size ? '<span class="text-xs text-gray-400">'+formatFileSize(a.file_size)+'</span>' : '') +
+      '<span class="text-xs text-gray-400">'+timeAgo(a.created_at)+'</span>' +
+      '<button onclick="event.stopPropagation();deleteAttachment('+a.id+','+t.id+')" class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete"><i class="fas fa-trash text-xs"></i></button>' +
+      '</div>').join('')+'</div>' +
+    '<div class="mt-2"><label class="flex items-center gap-2 cursor-pointer text-sm text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-dashed border-indigo-300 rounded-lg px-4 py-3 justify-center hover:bg-indigo-100 transition-colors"><i class="fas fa-cloud-upload-alt"></i><span>Choose file to upload</span><input type="file" id="fileUpload" class="hidden" onchange="uploadFile('+t.id+',this)"></label>' +
+    '<div id="uploadProgress" class="hidden mt-2 text-xs text-gray-500 text-center"><i class="fas fa-spinner fa-spin mr-1"></i>Uploading...</div></div></div>' +
     // Comments
     '<div><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Comments ('+((t.comments||[]).length)+')</label>' +
     '<div class="space-y-3 mb-3">'+(t.comments||[]).map(cm => '<div class="flex gap-3'+(cm.is_internal?' bg-yellow-50 -mx-2 px-2 py-1 rounded-lg border border-yellow-200':'')+'"><div class="flex-shrink-0 mt-1">'+avatar(cm.author_name||'U','w-8 h-8 text-xs')+'</div><div class="flex-1"><div class="flex items-center gap-2"><span class="text-sm font-semibold">'+esc(cm.author_name)+'</span>'+(cm.is_internal?'<span class="text-xs bg-yellow-200 text-yellow-800 px-1.5 rounded">Internal</span>':'')+'<span class="text-xs text-gray-400">'+timeAgo(cm.created_at)+'</span></div><div class="text-sm text-gray-700 mt-1">'+esc(cm.content)+'</div></div></div>').join('')+'</div>' +
@@ -625,14 +635,54 @@ async function addComment(taskId, isInternal) {
   await loadTaskDetail(taskId);
 }
 
-async function addAttachment(taskId) {
-  const input = document.getElementById('attachUrl');
-  if (!input.value.trim()) return;
-  const url = input.value.trim();
-  const filename = url.split('/').pop() || 'attachment';
-  await API.post('/api/tasks/' + taskId + '/attachments', { filename, file_url: url });
+async function uploadFile(taskId, input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 8 * 1024 * 1024) { alert('File too large. Maximum 8MB.'); input.value = ''; return; }
+  var prog = document.getElementById('uploadProgress');
+  if (prog) prog.classList.remove('hidden');
+  try {
+    var fd = new FormData();
+    fd.append('file', file);
+    var token = localStorage.getItem('flexbiz_token');
+    var res = await fetch('/api/tasks/' + taskId + '/attachments', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: fd
+    });
+    if (!res.ok) { var err = await res.json().catch(function(){return {}}); alert(err.error || 'Upload failed'); }
+    else { await loadTaskDetail(taskId); }
+  } catch(e) { alert('Upload failed. Please try again.'); }
+  if (prog) prog.classList.add('hidden');
   input.value = '';
+}
+
+async function deleteAttachment(attId, taskId) {
+  if (!confirm('Delete this attachment?')) return;
+  await API.del('/api/attachments/' + attId);
   await loadTaskDetail(taskId);
+}
+
+function fileIcon(nameOrMime) {
+  if (!nameOrMime) return 'file';
+  var s = nameOrMime.toLowerCase();
+  if (s.indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(s)) return 'file-image';
+  if (s.indexOf('pdf') !== -1 || /\.pdf$/i.test(s)) return 'file-pdf';
+  if (s.indexOf('word') !== -1 || s.indexOf('document') !== -1 || /\.(doc|docx)$/i.test(s)) return 'file-word';
+  if (s.indexOf('sheet') !== -1 || s.indexOf('excel') !== -1 || /\.(xls|xlsx|csv)$/i.test(s)) return 'file-excel';
+  if (s.indexOf('presentation') !== -1 || /\.(ppt|pptx)$/i.test(s)) return 'file-powerpoint';
+  if (s.indexOf('zip') !== -1 || s.indexOf('archive') !== -1 || /\.(zip|rar|7z|tar|gz)$/i.test(s)) return 'file-archive';
+  if (s.indexOf('video') !== -1 || /\.(mp4|mov|avi|wmv|webm)$/i.test(s)) return 'file-video';
+  if (s.indexOf('audio') !== -1 || /\.(mp3|wav|ogg|m4a)$/i.test(s)) return 'file-audio';
+  if (s.indexOf('text') !== -1 || /\.(txt|md|log)$/i.test(s)) return 'file-alt';
+  return 'file';
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 async function deleteTask(id) {

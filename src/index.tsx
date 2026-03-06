@@ -34,6 +34,27 @@ app.route('/client', clientPortalRoutes)
 // Calendar feed (for Apple Reminders)
 app.route('/cal', calendarRoutes)
 
+// Public file download (no auth required, files are accessed by direct ID)
+app.get('/files/:id', async (c) => {
+  const id = parseInt(c.req.param('id'))
+  // Ensure file_data column exists
+  try { await c.env.DB.prepare("SELECT file_data FROM attachments LIMIT 0").all() } catch { return c.json({ error: 'Not available' }, 404) }
+  const att = await c.env.DB.prepare(
+    'SELECT filename, mime_type, file_data FROM attachments WHERE id = ?'
+  ).bind(id).first() as any
+  if (!att || !att.file_data) return c.json({ error: 'File not found' }, 404)
+  const binary = atob(att.file_data)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Response(bytes.buffer, {
+    headers: {
+      'Content-Type': att.mime_type || 'application/octet-stream',
+      'Content-Disposition': 'inline; filename="' + (att.filename || 'file') + '"',
+      'Cache-Control': 'private, max-age=3600',
+    },
+  })
+})
+
 // Pages
 app.get('/login', (c) => c.html(renderLogin()))
 app.get('/client/login', (c) => c.html(renderClientLogin()))
