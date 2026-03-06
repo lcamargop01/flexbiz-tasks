@@ -467,6 +467,67 @@ apiRoutes.post('/tasks/bulk', async (c) => {
   return c.json({ success: true, updated: task_ids.length })
 })
 
+// Siri quick-add — accepts dictated text, creates a task
+apiRoutes.post('/tasks/siri-add', async (c) => {
+  const body = await c.req.json()
+  let { text, priority, project_id, client_id } = body
+  if (!text || !text.trim()) return c.json({ error: 'No task text provided' }, 400)
+  text = text.trim()
+
+  // Smart parsing: detect priority keywords
+  let detectedPriority = priority || 'medium'
+  const lowerText = text.toLowerCase()
+  if (!priority) {
+    if (lowerText.includes('urgent') || lowerText.includes('asap') || lowerText.includes('emergency')) detectedPriority = 'urgent'
+    else if (lowerText.includes('high priority') || lowerText.includes('important')) detectedPriority = 'high'
+    else if (lowerText.includes('low priority') || lowerText.includes('whenever') || lowerText.includes('not urgent')) detectedPriority = 'low'
+  }
+
+  // Smart parsing: detect client name from text (fuzzy match against known clients)
+  let detectedClientId = client_id || null
+  if (!client_id) {
+    const clients = await c.env.DB.prepare('SELECT id, company_name FROM clients').all()
+    for (const cl of (clients.results || []) as any[]) {
+      if (lowerText.includes(cl.company_name.toLowerCase())) {
+        detectedClientId = cl.id
+        break
+      }
+    }
+  }
+
+  // Clean up the title — remove priority keywords for a cleaner task name
+  let title = text
+    .replace(/\b(urgent|asap|emergency|high priority|important|low priority|not urgent|whenever)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  // Capitalize first letter
+  if (title.length > 0) title = title.charAt(0).toUpperCase() + title.slice(1)
+
+  const result = await c.env.DB.prepare(`
+    INSERT INTO tasks (title, status, priority, client_id, project_id, created_by, created_by_type)
+    VALUES (?, 'todo', ?, ?, ?, ?, 'api')
+  `).bind(
+    title || text,
+    detectedPriority,
+    detectedClientId,
+    project_id || null,
+    c.get('entityId')
+  ).run()
+
+  // Log activity
+  await c.env.DB.prepare(
+    `INSERT INTO activity_log (task_id, actor_id, actor_type, action, details) VALUES (?, ?, 'user', 'created', ?)`
+  ).bind(result.meta.last_row_id, c.get('entityId'), JSON.stringify({ source: 'siri', original_text: text })).run()
+
+  return c.json({
+    id: result.meta.last_row_id,
+    title: title || text,
+    priority: detectedPriority,
+    client_id: detectedClientId,
+    message: 'Task created: ' + (title || text)
+  }, 201)
+})
+
 // Email quick-add
 apiRoutes.post('/tasks/email-add', async (c) => {
   const body = await c.req.json()

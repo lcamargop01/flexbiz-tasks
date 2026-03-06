@@ -74,5 +74,6 @@ app.get('/team', (c) => c.html(renderDashboard()))
 app.get('/notifications', (c) => c.html(renderDashboard()))
 app.get('/settings', (c) => c.html(renderDashboard()))
 app.get('/gmail-setup', (c) => c.html(renderDashboard()))
+app.get('/siri-setup', (c) => c.html(renderDashboard()))
 
 export default app

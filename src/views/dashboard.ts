@@ -157,6 +157,7 @@ async function init() {
   else if (path.startsWith('/notifications')) S.currentPage = 'notifications';
   else if (path.startsWith('/settings')) S.currentPage = 'settings';
   else if (path.startsWith('/gmail-setup')) S.currentPage = 'gmail-setup';
+  else if (path.startsWith('/siri-setup')) S.currentPage = 'siri-setup';
   else S.currentPage = 'dashboard';
 
   S.loading = true; render();
@@ -172,7 +173,7 @@ function navigate(page) {
   S.showTaskModal = false;
   S.showNewTaskModal = false;
   closeMobileSidebar();
-  const urlMap = { dashboard: '/', tasks: '/tasks', projects: '/projects', clients: '/clients', team: '/team', processes: '/processes', notifications: '/notifications', settings: '/settings', 'gmail-setup': '/gmail-setup' };
+  const urlMap = { dashboard: '/', tasks: '/tasks', projects: '/projects', clients: '/clients', team: '/team', processes: '/processes', notifications: '/notifications', settings: '/settings', 'gmail-setup': '/gmail-setup', 'siri-setup': '/siri-setup' };
   history.pushState(null, '', urlMap[page] || '/');
   render();
   if (page === 'tasks') loadTasks();
@@ -230,6 +231,7 @@ function renderSidebar() {
     {id:'team',icon:'fas fa-users',label:'Team'},
     {id:'processes',icon:'fas fa-sitemap',label:'Processes'},
     {id:'gmail-setup',icon:'fab fa-google',label:'Gmail Setup'},
+    {id:'siri-setup',icon:'fas fa-microphone-alt',label:'Siri Setup'},
     {id:'settings',icon:'fas fa-cog',label:'Settings'},
   ];
   return '<div class="sidebar-desktop fixed left-0 top-0 bottom-0 w-64 bg-sidebar text-white z-30 flex flex-col">' +
@@ -273,7 +275,7 @@ function renderTopBar() {
 
 function renderPage() {
   if (S.loading) return '<div class="flex items-center justify-center h-96"><div class="text-center"><i class="fas fa-spinner fa-spin text-4xl text-indigo-500 mb-4"></i><p class="text-gray-500">Loading...</p></div></div>';
-  const pages = { dashboard: renderDashboardPage, tasks: renderTasksPage, projects: renderProjectsPage, clients: renderClientsPage, team: renderTeamPage, processes: renderProcessesPage, notifications: renderNotificationsPage, settings: renderSettingsPage, 'gmail-setup': renderGmailSetupPage };
+  const pages = { dashboard: renderDashboardPage, tasks: renderTasksPage, projects: renderProjectsPage, clients: renderClientsPage, team: renderTeamPage, processes: renderProcessesPage, notifications: renderNotificationsPage, settings: renderSettingsPage, 'gmail-setup': renderGmailSetupPage, 'siri-setup': renderSiriSetupPage };
   return (pages[S.currentPage] || renderDashboardPage)();
 }
 
@@ -1129,6 +1131,147 @@ async function generateApiKey() {
     const baseUrl = window.location.origin;
     const bmCode = "javascript:void((function(){var s=document.querySelector('h2.hP');var b=document.querySelector('.a3s');if(!s){alert('Open a Gmail email first!');return;}var t=s?s.innerText:'';var d=b?b.innerText.substring(0,500):'';fetch('"+baseUrl+"/api/tasks/email-add',{method:'POST',headers:{'X-API-Key':'"+data.api_key+"','Content-Type':'application/json'},body:JSON.stringify({subject:t,body:d,from:''})}).then(r=>r.json()).then(d=>{alert('Task created: '+t)}).catch(e=>alert('Error: '+e))})())";
     document.getElementById('bookmarklet').href = bmCode;
+  }
+}
+
+// ==================== SIRI SETUP PAGE ====================
+function renderSiriSetupPage() {
+  return '<div class="max-w-2xl"><h2 class="text-lg font-bold mb-4"><i class="fas fa-microphone-alt text-purple-500 mr-2"></i>Siri Quick-Add Setup</h2>' +
+    // Hero section
+    '<div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-200 p-6 mb-6">' +
+    '<div class="flex items-start gap-4"><div class="w-14 h-14 bg-purple-500 rounded-2xl flex items-center justify-center flex-shrink-0"><i class="fas fa-microphone-alt text-white text-2xl"></i></div>' +
+    '<div><h3 class="font-bold text-gray-800 text-lg">Add tasks with your voice</h3><p class="text-sm text-gray-600 mt-1">Say <strong>"Hey Siri, Add FlexBiz Task"</strong> to create a task instantly from anywhere on your iPhone, iPad, Mac, or Apple Watch.</p>' +
+    '<div class="flex flex-wrap gap-2 mt-3"><span class="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full"><i class="fas fa-mobile-alt mr-1"></i>iPhone</span><span class="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full"><i class="fas fa-tablet-alt mr-1"></i>iPad</span><span class="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full"><i class="fas fa-laptop mr-1"></i>Mac</span><span class="text-xs bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full"><i class="fab fa-apple mr-1"></i>Apple Watch</span></div></div></div></div>' +
+    // Step 1 — API Key
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">1</span></div><h3 class="font-bold text-gray-800">Generate Your API Key</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">This key authenticates Siri to add tasks on your behalf. Keep it private.</p>' +
+    '<button onclick="generateSiriKey()" class="bg-purple-600 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-purple-700 transition-colors"><i class="fas fa-key mr-2"></i>Generate API Key</button>' +
+    '<div id="siriKeyDisplay" class="mt-4 hidden">' +
+    '<div class="bg-gray-50 border rounded-lg p-3 flex items-center gap-3"><code id="siriKeyValue" class="text-sm text-purple-600 break-all flex-1"></code><button onclick="copySiriKey()" class="text-purple-600 hover:text-purple-800 flex-shrink-0 px-2" title="Copy"><i class="fas fa-copy text-lg"></i></button></div>' +
+    '<p class="text-xs text-amber-600 mt-2"><i class="fas fa-exclamation-triangle mr-1"></i>Copy this key now — it won\\\'t be shown again. This is the same key used for Gmail integration.</p>' +
+    '</div></div>' +
+    // Step 2 — Create the Shortcut
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">2</span></div><h3 class="font-bold text-gray-800">Create the Apple Shortcut</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-4">Open the <strong>Shortcuts</strong> app on your iPhone/iPad and create a new shortcut with these steps:</p>' +
+    '<div class="space-y-3">' +
+    siriStep('a', 'fas fa-microphone', 'Add <strong>Dictate Text</strong> action', 'This lets Siri ask you what task to add. The dictated text will be stored as the variable.') +
+    siriStep('b', 'fas fa-globe', 'Add <strong>Get Contents of URL</strong> action', 'This sends your dictated task to FlexBiz.') +
+    '</div>' +
+    // URL config details
+    '<div class="mt-4 bg-gray-50 rounded-xl p-4 border">' +
+    '<h4 class="font-semibold text-sm text-gray-700 mb-3"><i class="fas fa-cog text-gray-500 mr-1"></i>Configure the URL action:</h4>' +
+    '<div class="space-y-2 text-sm">' +
+    '<div class="flex items-start gap-2"><span class="font-medium text-gray-600 w-20 flex-shrink-0">URL:</span><code id="siriUrlField" class="text-purple-600 break-all text-xs bg-purple-50 px-2 py-1 rounded">' + '(generate key first)' + '</code></div>' +
+    '<div class="flex items-start gap-2"><span class="font-medium text-gray-600 w-20 flex-shrink-0">Method:</span><code class="text-gray-800">POST</code></div>' +
+    '<div class="flex items-start gap-2"><span class="font-medium text-gray-600 w-20 flex-shrink-0">Headers:</span><div><code class="text-gray-800 text-xs block">X-API-Key: <span id="siriHeaderKey" class="text-purple-600">(your key)</span></code><code class="text-gray-800 text-xs block mt-1">Content-Type: application/json</code></div></div>' +
+    '<div class="flex items-start gap-2"><span class="font-medium text-gray-600 w-20 flex-shrink-0">Body:</span><code class="text-gray-800 text-xs">JSON — key: <strong>text</strong>, value: <em>Dictated Text</em> variable</code></div>' +
+    '</div></div>' +
+    // Step c
+    '<div class="mt-4">' +
+    siriStep('c', 'fas fa-comment-dots', 'Add <strong>Show Result</strong> action <span class="text-gray-400 font-normal">(optional)</span>', 'Shows confirmation. Set it to: "Task created: " followed by the <em>Dictated Text</em> variable.') +
+    '</div></div>' +
+    // Step 3 — Name it
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">3</span></div><h3 class="font-bold text-gray-800">Name Your Shortcut</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">Name it something easy to say, like:</p>' +
+    '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' +
+    siriPhrase('Add FlexBiz Task') +
+    siriPhrase('New FlexBiz Task') +
+    siriPhrase('FlexBiz Task') +
+    siriPhrase('Add Task') +
+    '</div>' +
+    '<p class="text-xs text-gray-500 mt-3"><i class="fas fa-info-circle mr-1"></i>The shortcut name becomes the Siri command. You say "Hey Siri, " + the name.</p></div>' +
+    // Step 4 — try it
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">4</span></div><h3 class="font-bold text-gray-800">Try It!</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">Now just say:</p>' +
+    '<div class="bg-gradient-to-r from-gray-800 to-gray-900 text-white rounded-xl p-5 text-center">' +
+    '<div class="text-lg font-medium"><i class="fas fa-microphone-alt text-purple-400 mr-2"></i>"Hey Siri, Add FlexBiz Task"</div>' +
+    '<div class="text-sm text-gray-400 mt-2">Siri: "What task?"</div>' +
+    '<div class="text-sm text-purple-300 mt-1">"Follow up with Mihai about the contract"</div>' +
+    '<div class="text-sm text-green-400 mt-2"><i class="fas fa-check-circle mr-1"></i>Task created!</div>' +
+    '</div></div>' +
+    // Smart features
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><i class="fas fa-magic text-purple-500 text-lg"></i><h3 class="font-bold text-gray-800">Smart Features</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">The API automatically detects keywords in your voice command:</p>' +
+    '<div class="space-y-2">' +
+    '<div class="flex items-center gap-3 p-2 rounded-lg bg-red-50"><i class="fas fa-fire text-red-500 w-5 text-center"></i><span class="text-sm"><strong>Urgent / ASAP / Emergency</strong> → sets priority to <span class="text-red-600 font-semibold">Urgent</span></span></div>' +
+    '<div class="flex items-center gap-3 p-2 rounded-lg bg-orange-50"><i class="fas fa-arrow-up text-orange-500 w-5 text-center"></i><span class="text-sm"><strong>Important / High priority</strong> → sets priority to <span class="text-orange-600 font-semibold">High</span></span></div>' +
+    '<div class="flex items-center gap-3 p-2 rounded-lg bg-green-50"><i class="fas fa-arrow-down text-green-500 w-5 text-center"></i><span class="text-sm"><strong>Low priority / Whenever</strong> → sets priority to <span class="text-green-600 font-semibold">Low</span></span></div>' +
+    '<div class="flex items-center gap-3 p-2 rounded-lg bg-blue-50"><i class="fas fa-building text-blue-500 w-5 text-center"></i><span class="text-sm"><strong>Client name</strong> (e.g. "Lion MDs") → auto-links to that client</span></div>' +
+    '</div></div>' +
+    // Test section
+    '<div class="bg-white rounded-xl shadow-sm border p-6">' +
+    '<div class="flex items-center gap-3 mb-4"><i class="fas fa-vial text-indigo-500 text-lg"></i><h3 class="font-bold text-gray-800">Test from Browser</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">Test the Siri endpoint without setting up the shortcut:</p>' +
+    '<div class="flex gap-2"><input type="text" id="siriTestInput" placeholder="e.g. Follow up with Mihai about the contract" class="flex-1 border rounded-lg px-3 py-2 text-sm">' +
+    '<button onclick="testSiriAdd()" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 flex-shrink-0"><i class="fas fa-paper-plane mr-1"></i>Test</button></div>' +
+    '<div id="siriTestResult" class="mt-3 hidden text-sm p-3 rounded-lg"></div>' +
+    '</div></div>';
+}
+
+function siriStep(letter, icon, title, desc) {
+  return '<div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">' +
+    '<div class="w-7 h-7 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">' + letter + '</div>' +
+    '<div><div class="text-sm font-medium text-gray-800"><i class="' + icon + ' text-purple-500 mr-1.5"></i>' + title + '</div>' +
+    '<div class="text-xs text-gray-500 mt-1">' + desc + '</div></div></div>';
+}
+
+function siriPhrase(phrase) {
+  return '<div class="flex items-center gap-2 bg-purple-50 rounded-lg px-3 py-2.5 border border-purple-200">' +
+    '<i class="fas fa-microphone text-purple-400"></i>' +
+    '<span class="text-sm font-medium text-purple-800">"' + phrase + '"</span></div>';
+}
+
+var siriApiKey = null;
+
+async function generateSiriKey() {
+  const data = await API.post('/api/email-integration/generate-key');
+  if (data?.api_key) {
+    siriApiKey = data.api_key;
+    document.getElementById('siriKeyValue').textContent = data.api_key;
+    document.getElementById('siriKeyDisplay').classList.remove('hidden');
+    // Update the URL field and header key
+    var baseUrl = window.location.origin;
+    document.getElementById('siriUrlField').textContent = baseUrl + '/api/tasks/siri-add';
+    document.getElementById('siriHeaderKey').textContent = data.api_key;
+  }
+}
+
+function copySiriKey() {
+  var keyEl = document.getElementById('siriKeyValue');
+  if (keyEl && keyEl.textContent) {
+    navigator.clipboard.writeText(keyEl.textContent).then(function() {
+      var btn = keyEl.parentElement.querySelector('button');
+      if (btn) { btn.innerHTML = '<i class="fas fa-check text-green-500 text-lg"></i>'; setTimeout(function(){ btn.innerHTML = '<i class="fas fa-copy text-lg"></i>'; }, 2000); }
+    });
+  }
+}
+
+async function testSiriAdd() {
+  var input = document.getElementById('siriTestInput');
+  var resultEl = document.getElementById('siriTestResult');
+  if (!input || !input.value.trim()) { alert('Enter a task description to test'); return; }
+  resultEl.classList.remove('hidden');
+  resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-gray-50 text-gray-500';
+  resultEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending to Siri endpoint...';
+  try {
+    var res = await API.post('/api/tasks/siri-add', { text: input.value.trim() });
+    if (res && res.id) {
+      resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-green-50 text-green-700 border border-green-200';
+      resultEl.innerHTML = '<i class="fas fa-check-circle mr-2"></i><strong>Success!</strong> Task created: "' + esc(res.title) + '" (Priority: ' + res.priority + (res.client_id ? ', Client linked' : '') + ')';
+      input.value = '';
+      loadTasks();
+    } else {
+      resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-red-50 text-red-700';
+      resultEl.innerHTML = '<i class="fas fa-times-circle mr-2"></i>' + (res?.error || 'Unknown error');
+    }
+  } catch(e) {
+    resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-red-50 text-red-700';
+    resultEl.innerHTML = '<i class="fas fa-times-circle mr-2"></i>Connection error';
   }
 }
 
