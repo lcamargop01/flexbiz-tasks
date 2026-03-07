@@ -548,7 +548,7 @@ function renderCalendarView() {
         html += '<div onclick="event.stopPropagation();loadTaskDetail('+t.id+')" class="text-[10px] md:text-xs truncate rounded px-1 py-0.5 '+(isDone?'bg-gray-100 text-gray-400 line-through': isSub ? 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-l-2 border-purple-300' : 'bg-indigo-50 text-gray-700 hover:bg-indigo-100')+' leading-tight" title="'+esc(t.title)+(isSub?' (Subtask)':'')+(t.is_recurring?' (Recurring)':'')+'">'+(isSub?'<i class="fas fa-level-up-alt fa-rotate-90 text-purple-400 mr-0.5" style="font-size:7px"></i>':'')+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-0.5" style="font-size:7px"></i>':'')+'</div>';
       });
       if (dayTasks.length > 3) {
-        html += '<div class="text-[10px] text-gray-400 px-1">+'+(dayTasks.length-3)+' more</div>';
+        html += '<div onclick="event.stopPropagation();showDayTasks(&apos;'+dateStr+'&apos;,this)" class="text-[10px] text-indigo-500 hover:text-indigo-700 px-1 cursor-pointer hover:underline font-medium">+'+(dayTasks.length-3)+' more</div>';
       }
       html += '</div>';
     }
@@ -587,6 +587,56 @@ function calNav(dir) {
   if (S.calMonth < 0) { S.calMonth = 11; S.calYear--; }
   loadCalendarTasks().then(render);
   render();
+}
+
+function showDayTasks(dateStr, el) {
+  // Remove any existing popover
+  const old = document.getElementById('dayTasksPopover');
+  if (old) old.remove();
+
+  // Find all tasks for this date
+  const dayTasks = (S.calTasks || []).filter(function(t) {
+    return t.due_date && t.due_date.split('T')[0] === dateStr;
+  });
+  if (dayTasks.length === 0) return;
+
+  const dateLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  let list = '';
+  dayTasks.forEach(function(t) {
+    const isDone = t.status === 'done';
+    const isSub = !!t.parent_task_id;
+    const prioColors = {urgent:'text-red-500',high:'text-orange-500',medium:'text-blue-500',low:'text-green-500'};
+    const prioColor = prioColors[t.priority] || 'text-blue-500';
+    list += '<div onclick="event.stopPropagation();closeDayPopover();loadTaskDetail('+t.id+')" class="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer rounded-lg transition-colors group">' +
+      '<i class="fas fa-circle text-[6px] '+prioColor+' flex-shrink-0"></i>' +
+      '<div class="flex-1 min-w-0">' +
+      (isSub ? '<div class="text-[10px] text-purple-400 leading-tight"><i class="fas fa-level-up-alt fa-rotate-90 mr-0.5 text-[7px]"></i>'+esc(t.parent_task_title||'Subtask')+'</div>' : '') +
+      '<div class="text-sm truncate '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</div>' +
+      (t.assignee_names ? '<div class="text-[10px] text-gray-400"><i class="fas fa-user mr-0.5"></i>'+esc(t.assignee_names)+'</div>' : '') +
+      '</div>' +
+      '<span class="status-badge text-[10px] '+statusColor(t.status)+' flex-shrink-0">'+t.status.replace('_',' ')+'</span>' +
+      '</div>';
+  });
+
+  // Create popover
+  const popover = document.createElement('div');
+  popover.id = 'dayTasksPopover';
+  popover.innerHTML = '<div class="fixed inset-0 z-40" onclick="closeDayPopover()"></div>' +
+    '<div class="absolute z-50 bg-white rounded-xl shadow-2xl border border-gray-200 w-80 max-h-96 overflow-hidden" style="left:50%;top:50%;transform:translate(-50%,-50%);position:fixed">' +
+    '<div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">' +
+    '<div class="font-semibold text-sm text-gray-800"><i class="fas fa-calendar-day text-indigo-500 mr-2"></i>'+dateLabel+'</div>' +
+    '<div class="flex items-center gap-2"><span class="text-xs text-gray-400">'+dayTasks.length+' tasks</span>' +
+    '<button onclick="closeDayPopover()" class="text-gray-400 hover:text-gray-600 w-6 h-6 flex items-center justify-center"><i class="fas fa-times text-xs"></i></button></div></div>' +
+    '<div class="overflow-y-auto max-h-72 p-2 space-y-0.5">'+list+'</div>' +
+    '<div class="px-3 py-2 border-t bg-gray-50"><button onclick="closeDayPopover();addTaskOnDate(&apos;'+dateStr+'&apos;)" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium"><i class="fas fa-plus mr-1"></i>Add task on this date</button></div>' +
+    '</div>';
+  document.body.appendChild(popover);
+}
+
+function closeDayPopover() {
+  const p = document.getElementById('dayTasksPopover');
+  if (p) p.remove();
 }
 
 // ==================== STATS VIEW (original dashboard) ====================
