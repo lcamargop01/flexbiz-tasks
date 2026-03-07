@@ -1216,10 +1216,47 @@ async function cycleStatus() {
 }
 
 // ==================== NEW TASK MODAL ====================
+// ==================== NEW TASK ASSIGNEE CHIPS ====================
+function addNewTaskAssignee(userId) {
+  if (!userId) return;
+  if (!window._ntAssignees) window._ntAssignees = [];
+  if (window._ntAssignees.indexOf(userId) !== -1) return; // already added
+  window._ntAssignees.push(userId);
+  renderNewTaskAssigneeChips();
+}
+
+function removeNewTaskAssignee(userId) {
+  if (!window._ntAssignees) return;
+  window._ntAssignees = window._ntAssignees.filter(function(id) { return id !== userId; });
+  renderNewTaskAssigneeChips();
+}
+
+function renderNewTaskAssigneeChips() {
+  const container = document.getElementById('nt_assignee_chips');
+  const select = document.getElementById('nt_assignee_select');
+  if (!container || !select) return;
+  const ids = window._ntAssignees || [];
+  container.innerHTML = ids.map(function(uid) {
+    const user = S.users.find(function(u) { return String(u.id) === String(uid); });
+    if (!user) return '';
+    const initial = (user.name || '?').charAt(0).toUpperCase();
+    return '<span class="inline-flex items-center gap-1 bg-indigo-100 text-indigo-700 rounded-full pl-1 pr-2 py-0.5 text-xs font-medium">' +
+      '<span class="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold">' + esc(initial) + '</span>' +
+      esc(user.name.split(' ')[0]) +
+      '<button type="button" onclick="event.stopPropagation();removeNewTaskAssignee(&apos;'+uid+'&apos;)" class="ml-0.5 text-indigo-400 hover:text-indigo-700"><i class="fas fa-times text-[9px]"></i></button>' +
+      '</span>';
+  }).join('');
+  // Hide already-selected users from dropdown
+  Array.from(select.options).forEach(function(opt) {
+    if (opt.value) opt.hidden = ids.indexOf(opt.value) !== -1;
+  });
+}
+
 function renderNewTaskModal() {
-  return '<div class="fixed inset-0 z-50 modal-overlay flex items-end md:items-start justify-center md:pt-16 px-0 md:px-4" onclick="if(event.target===this){S.showNewTaskModal=false;render()}">' +
+  if (!window._ntModalOpen) { window._ntAssignees = []; window._ntModalOpen = true; }
+  return '<div class="fixed inset-0 z-50 modal-overlay flex items-end md:items-start justify-center md:pt-16 px-0 md:px-4" onclick="if(event.target===this){S.showNewTaskModal=false;window._ntModalOpen=false;render()}">' +
     '<div class="bg-white rounded-t-2xl md:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden slide-up md:fade-in">' +
-    '<div class="px-4 md:px-6 py-3 md:py-4 border-b bg-gray-50 flex items-center justify-between"><h3 class="font-bold text-gray-800"><i class="fas fa-plus-circle text-indigo-500 mr-2"></i>New Task</h3><button onclick="S.showNewTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times"></i></button></div>' +
+    '<div class="px-4 md:px-6 py-3 md:py-4 border-b bg-gray-50 flex items-center justify-between"><h3 class="font-bold text-gray-800"><i class="fas fa-plus-circle text-indigo-500 mr-2"></i>New Task</h3><button onclick="S.showNewTaskModal=false;window._ntModalOpen=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times"></i></button></div>' +
     '<form id="newTaskForm" class="p-4 md:p-6 space-y-4 overflow-y-auto" style="max-height:calc(95vh - 60px);-webkit-overflow-scrolling:touch">' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Title *</label><input type="text" id="nt_title" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200" placeholder="What needs to be done?"></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Description</label><textarea id="nt_desc" class="w-full border rounded-lg px-3 py-2 text-sm min-h-[60px]" placeholder="Add details..."></textarea></div>' +
@@ -1229,7 +1266,11 @@ function renderNewTaskModal() {
     '<div class="grid grid-cols-2 gap-4">' +
     ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Client</label><select id="nt_client" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'">'+esc(c.company_name)+'</option>').join('')+'</select></div>' : '') +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Project</label><select id="nt_project" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div></div>' +
-    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Assign To</label><select id="nt_assignee" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">Unassigned</option>'+S.users.map(u=>'<option value="'+u.id+'">'+esc(u.name)+(u.department||u.role ? ' ('+esc(u.department||u.role)+')' : '')+'</option>').join('')+'</select></div>' +
+    '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Assign To</label>' +
+    '<div id="nt_assignees_container" class="border rounded-lg px-2 py-1.5 min-h-[38px] flex flex-wrap gap-1.5 items-center cursor-text" onclick="document.getElementById(&apos;nt_assignee_select&apos;).focus()">' +
+    '<div id="nt_assignee_chips"></div>' +
+    '<select id="nt_assignee_select" onchange="addNewTaskAssignee(this.value);this.value=&apos;&apos;" class="text-sm border-0 outline-none bg-transparent flex-1 min-w-[120px] py-0.5"><option value="">+ Add assignee...</option>'+S.users.map(u=>'<option value="'+u.id+'">'+esc(u.name)+(u.department||u.role ? ' ('+esc(u.department||u.role)+')' : '')+'</option>').join('')+'</select>' +
+    '</div></div>' +
     '<div><label class="text-sm font-medium text-gray-700 mb-1 block">Tags</label><input type="text" id="nt_tags" class="w-full text-sm border rounded-lg px-3 py-2" placeholder="design, urgent, frontend (comma separated)"></div>' +
     // Recurring task toggle
     '<div class="border-t pt-4 mt-2">' +
@@ -1238,7 +1279,7 @@ function renderNewTaskModal() {
     '<div><label class="text-sm font-medium text-gray-600 mb-1 block">Repeat</label><select id="nt_frequency" class="w-full text-sm border rounded-lg px-3 py-2"><option value="daily">Daily</option><option value="weekly" selected>Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option><option value="quarterly">Every 3 Months</option><option value="yearly">Yearly</option></select></div>' +
     '<div><label class="text-sm font-medium text-gray-600 mb-1 block">End Date <span class="text-gray-400 font-normal">(optional)</span></label><input type="date" id="nt_recurrence_end" class="w-full text-sm border rounded-lg px-3 py-2"></div>' +
     '</div></div>' +
-    '<div class="flex justify-end gap-3 pt-2"><button type="button" onclick="S.showNewTaskModal=false;render()" class="px-4 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>Create Task</button></div>' +
+    '<div class="flex justify-end gap-3 pt-2"><button type="button" onclick="S.showNewTaskModal=false;window._ntModalOpen=false;render()" class="px-4 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button><button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700"><i class="fas fa-plus mr-1"></i>Create Task</button></div>' +
     '</form></div></div>';
 }
 
@@ -1797,9 +1838,12 @@ function bindEvents() {
 
   const form = document.getElementById('newTaskForm');
   if (form) {
+    // Initialize the assignee chips array
+    if (!window._ntAssignees) window._ntAssignees = [];
+    renderNewTaskAssigneeChips();
+
     form.onsubmit = async (e) => {
       e.preventDefault();
-      const assigneeId = document.getElementById('nt_assignee').value;
       const tagsStr = document.getElementById('nt_tags').value;
       const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
       
@@ -1809,6 +1853,10 @@ function bindEvents() {
         endDate: document.getElementById('nt_recurrence_end')?.value || null,
       } : null;
 
+      const assignees = (window._ntAssignees || []).map(function(uid) {
+        return { user_id: parseInt(uid), role: 'assignee' };
+      });
+
       await API.post('/api/tasks', {
         title: document.getElementById('nt_title').value,
         description: document.getElementById('nt_desc').value,
@@ -1817,10 +1865,12 @@ function bindEvents() {
         client_id: (document.getElementById('nt_client') ? document.getElementById('nt_client').value : '') || null,
         project_id: document.getElementById('nt_project').value || null,
         tags,
-        assignees: assigneeId ? [{ user_id: parseInt(assigneeId), role: 'assignee' }] : [],
+        assignees,
         is_recurring: isRecurring ? 1 : 0,
         recurrence_rule: recurrenceRule,
       });
+      window._ntAssignees = [];
+      window._ntModalOpen = false;
       S.showNewTaskModal = false;
       S.newTaskDate = null;
       await Promise.all([loadTasks(), loadCalendarTasks(), loadDashboard()]);
