@@ -107,10 +107,14 @@ apiRoutes.get('/tasks', async (c) => {
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id) as subtask_count,
       (SELECT COUNT(*) FROM tasks st WHERE st.parent_task_id = t.id AND st.status = 'done') as subtask_done_count,
       (SELECT COUNT(*) FROM comments cm WHERE cm.task_id = t.id) as comment_count,
-      (SELECT COUNT(*) FROM attachments at WHERE at.task_id = t.id) as attachment_count
+      (SELECT COUNT(*) FROM attachments at WHERE at.task_id = t.id) as attachment_count,
+      (SELECT MAX(st.due_date) FROM tasks st WHERE st.parent_task_id = t.id AND st.due_date IS NOT NULL) as subtask_last_due,
+      (SELECT GROUP_CONCAT(DISTINCT u2.name) FROM tasks st2 JOIN task_assignments ta2 ON ta2.task_id = st2.id JOIN users u2 ON ta2.user_id = u2.id WHERE st2.parent_task_id = t.id AND ta2.role = 'assignee') as subtask_assignee_names,
+      pt.title as parent_task_title
     FROM tasks t
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN clients cl ON t.client_id = cl.id
+    LEFT JOIN tasks pt ON t.parent_task_id = pt.id
     ${whereClause}
     ORDER BY
       ${sort === 'priority' ? "CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, t.due_date ASC NULLS LAST" : sort === 'status' ? "CASE t.status WHEN 'blocked' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'review' THEN 2 WHEN 'todo' THEN 3 WHEN 'done' THEN 4 WHEN 'cancelled' THEN 5 END, t.due_date ASC NULLS LAST" : sort === 'created' ? 't.created_at DESC' : sort === 'title' ? 't.title ASC' : 't.due_date ASC NULLS LAST, t.created_at DESC'}
@@ -153,11 +157,13 @@ apiRoutes.get('/tasks/:id', async (c) => {
     SELECT t.*, 
       p.name as project_name, p.color as project_color,
       cl.company_name as client_name, cl.color as client_color,
-      creator.name as created_by_name
+      creator.name as created_by_name,
+      pt.title as parent_task_title
     FROM tasks t
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN clients cl ON t.client_id = cl.id
     LEFT JOIN users creator ON t.created_by = creator.id
+    LEFT JOIN tasks pt ON t.parent_task_id = pt.id
     WHERE t.id = ?
   `).bind(id).first()
 
@@ -1080,13 +1086,16 @@ apiRoutes.get('/dashboard', async (c) => {
     c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date < datetime("now") AND status NOT IN ("done","cancelled")' + myFilter + clientWhere).first(),
     c.env.DB.prepare('SELECT COUNT(*) as count FROM tasks WHERE due_date BETWEEN datetime("now") AND datetime("now", "+3 days") AND status NOT IN ("done","cancelled")' + myFilter + clientWhere).first(),
     c.env.DB.prepare(`
-      SELECT t.id, t.title, t.status, t.priority, t.due_date, p.name as project_name, cl.company_name as client_name,
-        (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+      SELECT t.id, t.title, t.status, t.priority, t.due_date, t.parent_task_id, t.is_recurring, t.recurrence_rule,
+        p.name as project_name, cl.company_name as client_name,
+        (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names,
+        pt.title as parent_task_title
       FROM tasks t
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN clients cl ON t.client_id = cl.id
-      WHERE t.parent_task_id IS NULL AND t.status NOT IN ('done','cancelled') ${myFilterAlias} ${clientWhereAlias}
-      ORDER BY t.due_date ASC NULLS LAST LIMIT 15
+      LEFT JOIN tasks pt ON t.parent_task_id = pt.id
+      WHERE t.status NOT IN ('done','cancelled') ${myFilterAlias} ${clientWhereAlias}
+      ORDER BY t.due_date ASC NULLS LAST LIMIT 30
     `).all(),
     // Activity: all users see only activity on their assigned/created tasks
     c.env.DB.prepare(`
@@ -1127,23 +1136,25 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
   if (isClient) {
     const cIds = c.get('clientIds') || [uid]
     const ph = cIds.map(() => '?').join(',')
-    whereClause = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?`
+    whereClause = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?`
     params = [...cIds, start, end]
   } else {
     // ALL users (even admin) see only their assigned tasks, or unassigned tasks they created
-    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments))) AND t.parent_task_id IS NULL AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?${clientExtra}`
+    whereClause = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments))) AND t.due_date IS NOT NULL AND t.due_date BETWEEN ? AND ?${clientExtra}`
     params = [uid, uid, start, end]
   }
 
   const tasks = await c.env.DB.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.due_date, t.client_id,
-      t.is_recurring, t.recurrence_rule,
+      t.is_recurring, t.recurrence_rule, t.parent_task_id,
       p.name as project_name, p.color as project_color,
       cl.company_name as client_name,
-      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names,
+      pt.title as parent_task_title
     FROM tasks t
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN clients cl ON t.client_id = cl.id
+    LEFT JOIN tasks pt ON t.parent_task_id = pt.id
     WHERE ${whereClause}
     ORDER BY t.due_date ASC, CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
   `).bind(...params).all()
@@ -1154,22 +1165,24 @@ apiRoutes.get('/dashboard/calendar', async (c) => {
   if (isClient) {
     const cIds = c.get('clientIds') || [uid]
     const ph = cIds.map(() => '?').join(',')
-    noDateWhere = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
+    noDateWhere = `t.client_id IN (${ph}) AND t.is_visible_to_client = 1 AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')`
     noDateParams = [...cIds]
   } else {
-    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments))) AND t.parent_task_id IS NULL AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')${clientExtra}`
+    noDateWhere = `(t.id IN (SELECT task_id FROM task_assignments WHERE user_id = ?) OR (t.created_by = ? AND t.id NOT IN (SELECT task_id FROM task_assignments))) AND t.due_date IS NULL AND t.status NOT IN ('done','cancelled')${clientExtra}`
     noDateParams = [uid, uid]
   }
 
   const unscheduled = await c.env.DB.prepare(`
     SELECT t.id, t.title, t.status, t.priority, t.due_date, t.client_id,
-      t.is_recurring, t.recurrence_rule,
+      t.is_recurring, t.recurrence_rule, t.parent_task_id,
       p.name as project_name, p.color as project_color,
       cl.company_name as client_name,
-      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names,
+      pt.title as parent_task_title
     FROM tasks t
     LEFT JOIN projects p ON t.project_id = p.id
     LEFT JOIN clients cl ON t.client_id = cl.id
+    LEFT JOIN tasks pt ON t.parent_task_id = pt.id
     WHERE ${noDateWhere}
     ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END
     LIMIT 30

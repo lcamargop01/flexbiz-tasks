@@ -415,11 +415,14 @@ function renderAgendaView() {
       const prioColors = {urgent:'bg-red-500',high:'bg-orange-500',medium:'bg-blue-500',low:'bg-green-500'};
       const dot = prioColors[t.priority] || 'bg-blue-500';
       const assigneePrefix = t.assignee_names ? '<span class="font-semibold text-gray-500">' + esc(t.assignee_names.split(',')[0].split(' ')[0]) + '</span> \u2013 ' : '';
+      const isSubtask = t.parent_task_id || t.parent_task_title;
 
-      html += '<div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer group" onclick="loadTaskDetail('+t.id+')">' +
+      html += '<div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer group '+(isSubtask?'ml-4 border-l-2 border-indigo-200':'')+'" onclick="loadTaskDetail('+t.id+')">' +
         '<div class="w-2 h-2 rounded-full flex-shrink-0 '+(isDone?'bg-gray-300':dot)+'"></div>' +
         '<button onclick="event.stopPropagation();quickStatusCal('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(isDone?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400 group-hover:border-indigo-300')+' flex items-center justify-center text-xs transition-colors" title="'+(isDone?'Mark incomplete':'Mark complete')+'">'+(isDone?'<i class="fas fa-check text-[9px]"></i>':'')+'</button>' +
-        '<div class="flex-1 min-w-0"><span class="text-sm '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+assigneePrefix+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1 text-[9px]" title="Recurring"></i>':'')+'</span>' +
+        '<div class="flex-1 min-w-0">' +
+        (isSubtask ? '<span class="text-[10px] text-indigo-400 block leading-tight"><i class="fas fa-level-up-alt fa-rotate-90 mr-0.5 text-[8px]"></i>'+esc(t.parent_task_title||'Subtask')+'</span>' : '') +
+        '<span class="text-sm '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+assigneePrefix+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1 text-[9px]" title="Recurring"></i>':'')+'</span>' +
         (t.project_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.project_name)+'</span>' : '') +
         (t.client_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.client_name)+'</span>' : '') +
         '</div>' +
@@ -441,12 +444,15 @@ function renderAgendaView() {
         '<div class="space-y-0.5">';
       unschedFiltered.forEach(function(t) {
         const assigneePrefix = t.assignee_names ? '<span class="font-semibold text-gray-500">' + esc(t.assignee_names.split(',')[0].split(' ')[0]) + '</span> \u2013 ' : '';
-        html += '<div class="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
+        const isSub = t.parent_task_id || t.parent_task_title;
+        html += '<div class="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-gray-50 cursor-pointer '+(isSub?'ml-4 border-l-2 border-purple-200':'')+'" onclick="loadTaskDetail('+t.id+')">' +
           '<div class="w-2 h-2 rounded-full flex-shrink-0 bg-gray-300"></div>' +
           '<button onclick="event.stopPropagation();quickStatusCal('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex items-center justify-center text-xs transition-colors"></button>' +
+          '<div class="flex-1 min-w-0">' +
+          (isSub ? '<span class="text-[10px] text-purple-400 mr-1"><i class="fas fa-level-up-alt fa-rotate-90 text-[8px]"></i></span>' : '') +
           '<span class="text-sm text-gray-600">'+assigneePrefix+esc(t.title)+'</span>' +
           (t.project_name ? ' <span class="text-[11px] text-gray-400">&middot; '+esc(t.project_name)+'</span>' : '') +
-          '</div>';
+          '</div></div>';
       });
       html += '</div></div>';
     }
@@ -538,9 +544,8 @@ function renderCalendarView() {
       html += '<div class="mt-1 space-y-0.5">';
       dayTasks.slice(0, 3).forEach(function(t) {
         const isDone = t.status === 'done';
-        const prioColors = {urgent:'bg-red-500',high:'bg-orange-400',medium:'bg-indigo-400',low:'bg-green-400'};
-        const bg = isDone ? 'bg-gray-200 text-gray-400 line-through' : (prioColors[t.priority] ? prioColors[t.priority].replace('bg-','bg-')+'/15 text-gray-700' : 'bg-indigo-50 text-gray-700');
-        html += '<div onclick="event.stopPropagation();loadTaskDetail('+t.id+')" class="text-[10px] md:text-xs truncate rounded px-1 py-0.5 '+(isDone?'bg-gray-100 text-gray-400 line-through':'bg-indigo-50 text-gray-700 hover:bg-indigo-100')+' leading-tight" title="'+esc(t.title)+(t.is_recurring?' (Recurring)':'')+'">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-0.5" style="font-size:7px"></i>':'')+'</div>';
+        const isSub = !!t.parent_task_id;
+        html += '<div onclick="event.stopPropagation();loadTaskDetail('+t.id+')" class="text-[10px] md:text-xs truncate rounded px-1 py-0.5 '+(isDone?'bg-gray-100 text-gray-400 line-through': isSub ? 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-l-2 border-purple-300' : 'bg-indigo-50 text-gray-700 hover:bg-indigo-100')+' leading-tight" title="'+esc(t.title)+(isSub?' (Subtask)':'')+(t.is_recurring?' (Recurring)':'')+'">'+(isSub?'<i class="fas fa-level-up-alt fa-rotate-90 text-purple-400 mr-0.5" style="font-size:7px"></i>':'')+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-0.5" style="font-size:7px"></i>':'')+'</div>';
       });
       if (dayTasks.length > 3) {
         html += '<div class="text-[10px] text-gray-400 px-1">+'+(dayTasks.length-3)+' more</div>';
@@ -564,8 +569,9 @@ function renderCalendarView() {
       '<h4 class="text-sm font-semibold text-gray-500 mb-2"><i class="fas fa-inbox mr-2 text-gray-400"></i>Unscheduled Tasks ('+S.calUnscheduled.length+')</h4>' +
       '<div class="space-y-1">';
     S.calUnscheduled.slice(0, 10).forEach(function(t) {
-      html += '<div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm" onclick="loadTaskDetail('+t.id+')">' +
-        priorityIcon(t.priority) + '<span class="truncate">'+esc(t.title)+'</span>' +
+      const isSub = !!t.parent_task_id;
+      html += '<div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm '+(isSub?'ml-3 border-l-2 border-purple-200':'')+'" onclick="loadTaskDetail('+t.id+')">' +
+        priorityIcon(t.priority) + (isSub?'<i class="fas fa-level-up-alt fa-rotate-90 text-purple-400 text-[8px]"></i>':'') + '<span class="truncate">'+esc(t.title)+'</span>' +
         (t.project_name ? '<span class="text-xs text-gray-400 ml-auto flex-shrink-0">'+esc(t.project_name)+'</span>' : '') +
         '</div>';
     });
@@ -602,9 +608,9 @@ function renderStatsView() {
     // My tasks
     '<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5"><h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-user-check text-indigo-500"></i>My Tasks</h3>' +
     '<div class="space-y-2">' + ((d.myTasks || []).length === 0 ? '<p class="text-gray-400 text-sm py-4 text-center">No open tasks</p>' :
-    (d.myTasks || []).map(t => '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer" onclick="loadTaskDetail('+t.id+')">' +
+    (d.myTasks || []).map(t => '<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer '+(t.parent_task_id?'ml-3 border-l-2 border-purple-200':'')+'" onclick="loadTaskDetail('+t.id+')">' +
       priorityIcon(t.priority) +
-      '<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+'</div><div class="text-xs text-gray-400">'+(t.project_name ? esc(t.project_name) : '')+(t.client_name ? ' &middot; '+esc(t.client_name) : '')+'</div></div>' +
+      '<div class="flex-1 min-w-0">'+(t.parent_task_id?'<div class="text-[10px] text-purple-500 leading-tight"><i class="fas fa-level-up-alt fa-rotate-90 mr-0.5 text-[8px]"></i>'+esc(t.parent_task_title||'Subtask')+'</div>':'')+'<div class="text-sm font-medium truncate">'+esc(t.title)+'</div><div class="text-xs text-gray-400">'+(t.project_name ? esc(t.project_name) : '')+(t.client_name ? ' &middot; '+esc(t.client_name) : '')+(t.assignee_names?' &middot; <i class="fas fa-user text-[9px]"></i> '+esc(t.assignee_names):'')+'</div></div>' +
       '<div>'+dueLabel(t.due_date)+'</div>' +
       '<span class="status-badge '+statusColor(t.status)+'">'+esc(t.status)+'</span></div>').join('')) +
     '</div></div>' +
@@ -765,31 +771,39 @@ function renderTaskList() {
     S.tasks.map(t => {
       const assignees = t.assignments?.filter(a => a.role === 'assignee') || [];
       const assigneeNames = assignees.map(a => a.user_name).join(', ');
+      const isSub = !!t.parent_task_id;
+      const isParent = t.subtask_count > 0;
+      // For parent tasks: show all subtask members + own assignees
+      const allMembers = isParent && t.subtask_assignee_names ? (assigneeNames ? assigneeNames + ', ' + t.subtask_assignee_names : t.subtask_assignee_names) : assigneeNames;
+      const allMemberArr = allMembers ? [...new Set(allMembers.split(',').map(s=>s.trim()).filter(Boolean))] : [];
+      // For parent tasks: show latest due date across subtasks
+      const effectiveDue = isParent && t.subtask_last_due && (!t.due_date || t.subtask_last_due > t.due_date) ? t.subtask_last_due : t.due_date;
       return '<!-- Desktop row -->' +
-        '<div class="task-row hidden md:grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')">' +
-        '<div class="col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0"><div class="text-sm font-medium truncate">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1.5 text-[10px]" title="Recurring task"></i>':'')+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
+        '<div class="task-row hidden md:grid grid-cols-12 gap-2 px-4 py-3 border-b border-gray-100 items-center cursor-pointer priority-'+t.priority+(isSub?' bg-gray-50/50':'')+'" onclick="loadTaskDetail('+t.id+')">' +
+        '<div class="col-span-4"><div class="flex items-center gap-2"><button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 w-5 h-5 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-indigo-400')+' flex items-center justify-center text-xs">'+(t.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><div class="min-w-0">'+(isSub?'<div class="text-[10px] text-purple-500 leading-tight mb-0.5"><i class="fas fa-level-up-alt fa-rotate-90 mr-0.5 text-[8px]"></i>'+esc(t.parent_task_title||'Parent task')+'</div>':'')+'<div class="text-sm font-medium truncate">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1.5 text-[10px]" title="Recurring task"></i>':'')+'</div>'+(t.tags?.length?'<div class="flex gap-1 mt-0.5">'+t.tags.slice(0,3).map(tag=>'<span class="tag-chip bg-indigo-50 text-indigo-600">'+esc(tag)+'</span>').join('')+'</div>':'')+'</div></div></div>' +
         '<div class="col-span-2"><div class="text-xs">'+(t.project_name?'<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:'+esc(t.project_color||'#6366f1')+'"></span>'+esc(t.project_name)+'</span>':'')+'</div><div class="text-xs text-gray-400">'+(t.client_name||'')+'</div></div>' +
         '<div class="col-span-1">'+priorityIcon(t.priority)+' <span class="text-xs capitalize text-gray-500">'+t.priority+'</span></div>' +
         '<div class="col-span-1"><span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span></div>' +
-        '<div class="col-span-2"><div class="avatar-stack flex">'+(assignees.length>0 ? assignees.slice(0,3).map(a=>avatar(a.user_name)).join('') + (assignees.length>3?'<div class="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs text-gray-600">+'+(assignees.length-3)+'</div>':'') : '<span class="text-xs text-gray-400">Unassigned</span>')+'</div></div>' +
-        '<div class="col-span-1">'+dueLabel(t.due_date)+'</div>' +
-        '<div class="col-span-1 flex items-center gap-2 text-xs text-gray-400">'+(t.subtask_count>0?'<span><i class="fas fa-sitemap mr-1"></i>'+t.subtask_done_count+'/'+t.subtask_count+'</span> ':'')+(t.comment_count>0?'<span><i class="fas fa-comment mr-1"></i>'+t.comment_count+'</span> ':'')+(t.attachment_count>0?'<span><i class="fas fa-paperclip mr-1"></i>'+t.attachment_count+'</span>':'')+'</div>' +
+        '<div class="col-span-2"><div class="avatar-stack flex">'+(allMemberArr.length>0 ? allMemberArr.slice(0,3).map(n=>avatar(n)).join('') + (allMemberArr.length>3?'<div class="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs text-gray-600">+'+(allMemberArr.length-3)+'</div>':'') : '<span class="text-xs text-gray-400">Unassigned</span>')+'</div></div>' +
+        '<div class="col-span-1">'+dueLabel(effectiveDue)+'</div>' +
+        '<div class="col-span-1 flex items-center gap-2 text-xs text-gray-400">'+(t.subtask_count>0?'<span><i class="fas fa-sitemap mr-1"></i>'+t.subtask_done_count+'/'+t.subtask_count+'</span> ':'')+(isSub?'<span class="text-purple-400"><i class="fas fa-code-branch"></i></span>':'')+(t.comment_count>0?'<span><i class="fas fa-comment mr-1"></i>'+t.comment_count+'</span> ':'')+(t.attachment_count>0?'<span><i class="fas fa-paperclip mr-1"></i>'+t.attachment_count+'</span>':'')+'</div>' +
         '</div>' +
         '<!-- Mobile card -->' +
-        '<div class="md:hidden task-row border-b border-gray-100 cursor-pointer priority-'+t.priority+'" onclick="loadTaskDetail('+t.id+')" style="padding:14px 16px">' +
+        '<div class="md:hidden task-row border-b border-gray-100 cursor-pointer priority-'+t.priority+(isSub?' bg-gray-50/50':'')+'" onclick="loadTaskDetail('+t.id+')" style="padding:14px 16px">' +
         '<div class="flex items-start gap-3">' +
         '<button onclick="event.stopPropagation();quickStatus('+t.id+',&apos;'+t.status+'&apos;)" class="flex-shrink-0 rounded-full border-2 '+(t.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300 active:border-indigo-400')+' flex items-center justify-center" style="width:28px;height:28px;margin-top:2px">'+(t.status==='done'?'<i class="fas fa-check text-xs"></i>':'')+'</button>' +
         '<div class="flex-1 min-w-0">' +
+        (isSub?'<div class="text-[10px] text-purple-500 leading-tight mb-0.5"><i class="fas fa-level-up-alt fa-rotate-90 mr-0.5 text-[8px]"></i>'+esc(t.parent_task_title||'Parent task')+'</div>':'') +
         '<div class="text-[15px] font-medium leading-snug '+(t.status==='done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+(t.is_recurring?'<i class="fas fa-redo text-indigo-400 ml-1.5 text-[10px]" title="Recurring task"></i>':'')+'</div>' +
         '<div class="flex flex-wrap gap-2 mt-2 items-center">' +
         '<span class="status-badge '+statusColor(t.status)+'">'+t.status.replace('_',' ')+'</span>' +
         priorityIcon(t.priority) +
-        dueLabel(t.due_date) +
+        dueLabel(effectiveDue) +
         '</div>' +
         '<div class="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 items-center">' +
         (t.client_name?'<span class="text-xs text-gray-400"><i class="fas fa-building mr-0.5"></i>'+esc(t.client_name)+'</span>':'') +
         (t.project_name?'<span class="text-xs text-gray-400"><i class="fas fa-folder mr-0.5"></i>'+esc(t.project_name)+'</span>':'') +
-        (assigneeNames?'<span class="text-xs text-gray-400"><i class="fas fa-user mr-0.5"></i>'+esc(assigneeNames)+'</span>':'') +
+        (allMemberArr.length>0?'<span class="text-xs text-gray-400"><i class="fas fa-users mr-0.5"></i>'+esc(allMemberArr.join(', '))+'</span>':'') +
         (t.subtask_count>0?'<span class="text-xs text-gray-400"><i class="fas fa-sitemap mr-0.5"></i>'+t.subtask_done_count+'/'+t.subtask_count+'</span>':'') +
         (t.comment_count>0?'<span class="text-xs text-gray-400"><i class="fas fa-comment mr-0.5"></i>'+t.comment_count+'</span>':'') +
         '</div>' +
@@ -877,6 +891,8 @@ function renderTaskModal() {
     '<div class="flex items-center gap-1">'+((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<button onclick="deleteTask('+t.id+')" class="text-gray-400 hover:text-red-500 flex items-center justify-center" style="width:44px;height:44px" title="Delete"><i class="fas fa-trash text-sm"></i></button>' : '')+'<button onclick="S.showTaskModal=false;render()" class="text-gray-400 hover:text-gray-700 flex items-center justify-center" style="width:44px;height:44px"><i class="fas fa-times text-lg"></i></button></div></div>' +
     // Body
     '<div class="flex-1 overflow-y-auto p-4 md:p-6" style="-webkit-overflow-scrolling:touch">' +
+    // Parent task link (for subtasks)
+    (t.parent_task_id ? '<div class="mb-3 text-sm bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 flex items-center gap-2"><i class="fas fa-level-up-alt fa-rotate-90 text-purple-400 text-xs"></i><span class="text-purple-600">Subtask of:</span> <a onclick="loadTaskDetail('+t.parent_task_id+')" class="text-purple-700 font-medium hover:underline cursor-pointer">'+esc(t.parent_task_title||'Parent Task')+'</a></div>' : '') +
     // Title (editable)
     '<div class="mb-4"><input type="text" value="'+esc(t.title)+'" class="text-xl font-bold w-full border-0 focus:ring-0 p-0 bg-transparent" onchange="updateTaskField('+t.id+',&apos;title&apos;,this.value)"></div>' +
     // Description
@@ -889,6 +905,25 @@ function renderTaskModal() {
     ((S.user?.role === 'admin' || S.user?.role === 'manager') ? '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><select onchange="updateTaskField('+t.id+',&apos;client_id&apos;,this.value||null);S.selectedTask.client_id=this.value?parseInt(this.value):null;S.selectedTask.client_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.clients.map(c=>'<option value="'+c.id+'"'+(t.client_id==c.id?' selected':'')+'>'+esc(c.company_name)+'</option>').join('')+'</select></div>' : (t.client_name ? '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Client</label><div class="text-sm text-gray-700 py-2">'+esc(t.client_name)+'</div></div>' : '')) +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Project</label><select onchange="updateTaskField('+t.id+',&apos;project_id&apos;,this.value||null);S.selectedTask.project_id=this.value?parseInt(this.value):null;S.selectedTask.project_name=this.options[this.selectedIndex].text;render()" class="w-full text-sm border rounded-lg px-3 py-2"><option value="">None</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(t.project_id==p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></div>' +
     '<div><label class="text-xs font-semibold text-gray-500 mb-1 block">Est. Hours</label><input type="number" value="'+(t.estimated_hours||'')+'" onchange="updateTaskField('+t.id+',&apos;estimated_hours&apos;,parseFloat(this.value))" class="w-full text-sm border rounded-lg px-3 py-2" step="0.5"></div></div>' +
+    // Team & Timeline summary for parent tasks
+    (function() {
+      var subs = t.subtasks || [];
+      if (subs.length === 0) return '';
+      var allNames = [];
+      (assignees || []).forEach(function(a) { if (a.user_name) allNames.push(a.user_name); });
+      subs.forEach(function(st) { if (st.assignee_names) st.assignee_names.split(',').forEach(function(n) { n = n.trim(); if (n && allNames.indexOf(n) === -1) allNames.push(n); }); });
+      var latestDue = t.due_date || '';
+      subs.forEach(function(st) { if (st.due_date && st.due_date > latestDue) latestDue = st.due_date; });
+      return '<div class="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-4">' +
+        '<div class="flex items-center gap-2 mb-3"><i class="fas fa-users-cog text-indigo-500"></i><span class="text-sm font-semibold text-indigo-700">Team & Timeline</span><span class="text-xs text-indigo-400 ml-auto">Across '+subs.length+' subtask'+(subs.length>1?'s':'')+'</span></div>' +
+        '<div class="grid grid-cols-2 gap-4">' +
+        '<div><div class="text-xs font-medium text-gray-500 mb-1.5">All Members</div>' +
+        '<div class="flex flex-wrap gap-1">' + (allNames.length > 0 ? allNames.map(function(n) { return '<span class="inline-flex items-center gap-1 text-xs bg-white border border-indigo-200 rounded-full px-2 py-0.5"><span class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[9px] font-bold">' + esc(n.charAt(0)) + '</span>' + esc(n.split(' ')[0]) + '</span>'; }).join('') : '<span class="text-xs text-gray-400">No members assigned</span>') +
+        '</div></div>' +
+        '<div><div class="text-xs font-medium text-gray-500 mb-1.5">Final Due Date</div>' +
+        (latestDue ? '<span class="text-sm font-medium '+(new Date(latestDue) < new Date() ? 'text-red-600' : 'text-gray-800')+'"><i class="fas fa-calendar-alt mr-1 text-indigo-400"></i>'+new Date(latestDue).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+'</span>' : '<span class="text-xs text-gray-400">No due dates set</span>') +
+        '</div></div></div>';
+    })() +
     // Recurrence settings
     (function() {
       var rule = null;
@@ -918,8 +953,29 @@ function renderTaskModal() {
     '<select onchange="addAssignee('+t.id+',this.value);this.selectedIndex=0" class="text-sm border rounded-full px-3 py-1.5 bg-white"><option value="">+ Add assignee</option>'+S.users.filter(u=>!assignees.find(a=>a.user_id===u.id)).map(u=>'<option value="'+u.id+'">'+esc(u.name)+'</option>').join('')+'</select></div></div>' +
     // Subtasks
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Subtasks '+(t.subtasks?.length?'('+t.subtasks.filter(s=>s.status==='done').length+'/'+t.subtasks.length+')':'')+'</label>' +
-    '<div class="space-y-1">' + (t.subtasks||[]).map(st => '<div class="flex items-center gap-2 p-2 rounded hover:bg-gray-50"><button onclick="quickStatus('+st.id+',&apos;'+st.status+'&apos;)" class="w-5 h-5 rounded-full border-2 '+(st.status==='done'?'bg-green-500 border-green-500 text-white':'border-gray-300')+' flex items-center justify-center text-xs flex-shrink-0">'+(st.status==='done'?'<i class="fas fa-check"></i>':'')+'</button><span class="text-sm '+(st.status==='done'?'line-through text-gray-400':'')+'">'+esc(st.title)+'</span><span class="text-xs text-gray-400 ml-auto">'+(st.assignee_names||'')+'</span></div>').join('') +
-    '</div><div class="mt-2 flex gap-2"><input type="text" id="newSubtask" placeholder="Add subtask..." class="flex-1 text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===&apos;Enter&apos;)addSubtask('+t.id+')"><button onclick="addSubtask('+t.id+')" class="text-sm text-indigo-600 hover:text-indigo-800 px-3"><i class="fas fa-plus mr-1"></i>Add</button></div></div>' +
+    '<div class="space-y-1">' + (t.subtasks||[]).map(st => {
+      const isDone = st.status === 'done';
+      return '<div class="flex items-center gap-2 p-2 rounded hover:bg-gray-50 group">' +
+        '<button onclick="quickStatus('+st.id+',&apos;'+st.status+'&apos;)" class="w-5 h-5 rounded-full border-2 '+(isDone?'bg-green-500 border-green-500 text-white':'border-gray-300')+' flex items-center justify-center text-xs flex-shrink-0">'+(isDone?'<i class="fas fa-check"></i>':'')+'</button>' +
+        '<span class="text-sm '+(isDone?'line-through text-gray-400':'text-gray-800')+' cursor-pointer hover:text-indigo-600 flex-1 min-w-0 truncate" onclick="loadTaskDetail('+st.id+')" title="Open subtask details">'+esc(st.title)+'</span>' +
+        '<div class="flex items-center gap-2 flex-shrink-0">' +
+        (st.due_date ? '<span class="text-[11px] '+((new Date(st.due_date) < new Date() && !isDone) ? 'text-red-500' : 'text-gray-400')+'"><i class="fas fa-clock mr-0.5"></i>'+new Date(st.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})+'</span>' : '') +
+        '<select onchange="updateSubtaskAssignee('+st.id+','+t.id+',this.value)" class="text-[11px] border rounded px-1.5 py-0.5 bg-white max-w-[100px] opacity-70 group-hover:opacity-100 transition-opacity">' +
+        '<option value="">'+(st.assignee_names || 'Assign')+'</option>' +
+        S.users.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('') +
+        '</select>' +
+        '<input type="date" value="'+(st.due_date ? st.due_date.split('T')[0] : '')+'" onchange="updateSubtaskDueDate('+st.id+','+t.id+',this.value)" class="text-[11px] border rounded px-1.5 py-0.5 bg-white w-[110px] opacity-70 group-hover:opacity-100 transition-opacity" title="Due date">' +
+        '<button onclick="event.stopPropagation();deleteSubtask('+st.id+','+t.id+')" class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete subtask"><i class="fas fa-times text-xs"></i></button>' +
+        '</div></div>';
+    }).join('') +
+    '</div>' +
+    // Add subtask form with assignee and due date
+    '<div class="mt-2 space-y-2">' +
+    '<div class="flex gap-2"><input type="text" id="newSubtask" placeholder="Add subtask..." class="flex-1 text-sm border rounded-lg px-3 py-2" onkeyup="if(event.key===&apos;Enter&apos;)addSubtask('+t.id+')"><button onclick="addSubtask('+t.id+')" class="text-sm text-indigo-600 hover:text-indigo-800 px-3"><i class="fas fa-plus mr-1"></i>Add</button></div>' +
+    '<div class="flex gap-2 items-center">' +
+    '<select id="newSubtaskAssignee" class="text-xs border rounded-lg px-2 py-1.5 bg-white flex-1"><option value="">Assign to...</option>'+S.users.map(function(u){return '<option value="'+u.id+'">'+esc(u.name)+'</option>';}).join('')+'</select>' +
+    '<input type="date" id="newSubtaskDue" class="text-xs border rounded-lg px-2 py-1.5 bg-white flex-1" placeholder="Due date">' +
+    '</div></div></div>' +
     // Attachments
     '<div class="mb-6"><label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Attachments ('+((t.attachments||[]).length)+')</label>' +
     '<div class="space-y-1">'+(t.attachments||[]).map(a => '<div class="flex items-center gap-2 p-2 bg-gray-50 rounded-lg group">' +
@@ -984,8 +1040,42 @@ async function removeAssignee(taskId, userId) {
 async function addSubtask(parentId) {
   const input = document.getElementById('newSubtask');
   if (!input.value.trim()) return;
-  await API.post('/api/tasks', { title: input.value.trim(), parent_task_id: parentId, client_id: S.selectedTask.client_id, project_id: S.selectedTask.project_id });
+  const assigneeEl = document.getElementById('newSubtaskAssignee');
+  const dueEl = document.getElementById('newSubtaskDue');
+  const assigneeId = assigneeEl ? assigneeEl.value : '';
+  const dueDate = dueEl ? dueEl.value : '';
+  await API.post('/api/tasks', {
+    title: input.value.trim(),
+    parent_task_id: parentId,
+    client_id: S.selectedTask.client_id,
+    project_id: S.selectedTask.project_id,
+    due_date: dueDate ? dueDate + 'T17:00' : null,
+    assignees: assigneeId ? [{ user_id: parseInt(assigneeId), role: 'assignee' }] : [],
+  });
   input.value = '';
+  if (assigneeEl) assigneeEl.selectedIndex = 0;
+  if (dueEl) dueEl.value = '';
+  await loadTaskDetail(parentId);
+}
+
+async function updateSubtaskAssignee(subtaskId, parentId, userId) {
+  if (!userId) return;
+  await API.put('/api/tasks/' + subtaskId, {
+    assignees: [{ user_id: parseInt(userId), role: 'assignee' }]
+  });
+  await loadTaskDetail(parentId);
+}
+
+async function updateSubtaskDueDate(subtaskId, parentId, dateVal) {
+  await API.put('/api/tasks/' + subtaskId, {
+    due_date: dateVal ? dateVal + 'T17:00' : null,
+  });
+  await loadTaskDetail(parentId);
+}
+
+async function deleteSubtask(subtaskId, parentId) {
+  if (!confirm('Delete this subtask?')) return;
+  await API.del('/api/tasks/' + subtaskId);
   await loadTaskDetail(parentId);
 }
 
