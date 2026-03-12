@@ -178,11 +178,12 @@ async function init() {
   else if (path.startsWith('/settings')) S.currentPage = 'settings';
   else if (path.startsWith('/gmail-setup')) S.currentPage = 'gmail-setup';
   else if (path.startsWith('/siri-setup')) S.currentPage = 'siri-setup';
+  else if (path.startsWith('/api-integration')) S.currentPage = 'api-integration';
   else S.currentPage = 'dashboard';
 
   // Redirect employees away from admin-only pages
   const isEmp = S.user?.role === 'employee';
-  const adminOnlyPages = ['clients', 'team', 'processes', 'gmail-setup', 'siri-setup'];
+  const adminOnlyPages = ['clients', 'team', 'processes', 'gmail-setup', 'siri-setup', 'api-integration'];
   if (isEmp && adminOnlyPages.includes(S.currentPage)) {
     S.currentPage = 'dashboard';
     history.replaceState(null, '', '/');
@@ -201,13 +202,13 @@ async function init() {
 
 function navigate(page) {
   const isAdmin = S.user?.role === 'admin' || S.user?.role === 'manager';
-  const adminPages = ['clients', 'team', 'processes', 'gmail-setup', 'siri-setup'];
+  const adminPages = ['clients', 'team', 'processes', 'gmail-setup', 'siri-setup', 'api-integration'];
   if (!isAdmin && adminPages.includes(page)) { page = 'dashboard'; }
   S.currentPage = page;
   S.showTaskModal = false;
   S.showNewTaskModal = false;
   closeMobileSidebar();
-  const urlMap = { dashboard: '/', tasks: '/tasks', projects: '/projects', clients: '/clients', team: '/team', processes: '/processes', notifications: '/notifications', settings: '/settings', 'gmail-setup': '/gmail-setup', 'siri-setup': '/siri-setup' };
+  const urlMap = { dashboard: '/', tasks: '/tasks', projects: '/projects', clients: '/clients', team: '/team', processes: '/processes', notifications: '/notifications', settings: '/settings', 'gmail-setup': '/gmail-setup', 'siri-setup': '/siri-setup', 'api-integration': '/api-integration' };
   history.pushState(null, '', urlMap[page] || '/');
   render();
   if (page === 'tasks') loadTasks();
@@ -267,6 +268,7 @@ function renderSidebar() {
     {id:'processes',icon:'fas fa-sitemap',label:'Processes', adminOnly: true},
     {id:'gmail-setup',icon:'fab fa-google',label:'Gmail Setup', adminOnly: true},
     {id:'siri-setup',icon:'fas fa-microphone-alt',label:'Siri Setup', adminOnly: true},
+    {id:'api-integration',icon:'fas fa-plug',label:'API Integration', adminOnly: true},
     {id:'notifications',icon:'fas fa-bell',label:'Notifications', everyone: true},
     {id:'settings',icon:'fas fa-cog',label:'Settings', everyone: true},
   ];
@@ -319,7 +321,7 @@ function renderTopBar() {
 
 function renderPage() {
   if (S.loading) return '<div class="flex items-center justify-center h-96"><div class="text-center"><i class="fas fa-spinner fa-spin text-4xl text-indigo-500 mb-4"></i><p class="text-gray-500">Loading...</p></div></div>';
-  const pages = { dashboard: renderDashboardPage, tasks: renderTasksPage, projects: renderProjectsPage, clients: renderClientsPage, team: renderTeamPage, processes: renderProcessesPage, notifications: renderNotificationsPage, settings: renderSettingsPage, 'gmail-setup': renderGmailSetupPage, 'siri-setup': renderSiriSetupPage };
+  const pages = { dashboard: renderDashboardPage, tasks: renderTasksPage, projects: renderProjectsPage, clients: renderClientsPage, team: renderTeamPage, processes: renderProcessesPage, notifications: renderNotificationsPage, settings: renderSettingsPage, 'gmail-setup': renderGmailSetupPage, 'siri-setup': renderSiriSetupPage, 'api-integration': renderApiIntegrationPage };
   return (pages[S.currentPage] || renderDashboardPage)();
 }
 
@@ -1824,6 +1826,243 @@ async function testSiriAdd() {
   }
 }
 
+// ==================== API INTEGRATION PAGE ====================
+function renderApiIntegrationPage() {
+  const baseUrl = '(your-production-url)';
+  return '<div class="max-w-3xl">' +
+    // Hero
+    '<div class="bg-gradient-to-r from-emerald-50 to-cyan-50 rounded-2xl border border-emerald-200 p-6 mb-6">' +
+    '<div class="flex items-start gap-4"><div class="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center flex-shrink-0"><i class="fas fa-plug text-white text-2xl"></i></div>' +
+    '<div><h2 class="font-bold text-gray-800 text-lg">API Integration</h2>' +
+    '<p class="text-sm text-gray-600 mt-1">Create tasks from any external application — Zapier, Make, custom scripts, CRMs, or any tool that can make HTTP requests.</p>' +
+    '<div class="flex flex-wrap gap-2 mt-3">' +
+    '<span class="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"><i class="fas fa-bolt mr-1"></i>Zapier</span>' +
+    '<span class="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"><i class="fas fa-cogs mr-1"></i>Make</span>' +
+    '<span class="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"><i class="fas fa-code mr-1"></i>Custom Code</span>' +
+    '<span class="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"><i class="fas fa-robot mr-1"></i>n8n</span>' +
+    '<span class="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"><i class="fab fa-python mr-1"></i>Python</span>' +
+    '<span class="text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full"><i class="fab fa-node-js mr-1"></i>Node.js</span>' +
+    '</div></div></div></div>' +
+
+    // Step 1 — API Key
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">1</span></div><h3 class="font-bold text-gray-800">Get Your API Key</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">Use this key in the <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">X-API-Key</code> header to authenticate requests. Same key as Gmail/Siri setup.</p>' +
+    '<button onclick="generateIntegrationKey()" class="bg-emerald-600 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-emerald-700 transition-colors"><i class="fas fa-key mr-2"></i>Generate / View API Key</button>' +
+    '<div id="integrationKeyDisplay" class="mt-4 hidden">' +
+    '<div class="bg-gray-50 border rounded-lg p-3 flex items-center gap-3"><code id="integrationKeyValue" class="text-sm text-emerald-600 break-all flex-1 font-mono"></code>' +
+    '<button onclick="copyIntegrationKey()" id="integrationCopyBtn" class="text-emerald-600 hover:text-emerald-800 flex-shrink-0 px-2" title="Copy"><i class="fas fa-copy text-lg"></i></button></div>' +
+    '<p class="text-xs text-amber-600 mt-2"><i class="fas fa-exclamation-triangle mr-1"></i>Copy now — won\\\'t be shown again. Keep it secret.</p></div></div>' +
+
+    // Step 2 — Endpoint reference
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">2</span></div><h3 class="font-bold text-gray-800">API Endpoint</h3></div>' +
+    '<div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4"><pre id="apiIntegrationEndpoint" class="text-sm font-mono text-green-400 whitespace-pre"></pre></div>' +
+
+    // Request fields table
+    '<h4 class="font-semibold text-sm text-gray-700 mb-2"><i class="fas fa-list mr-1"></i>Request Body Fields</h4>' +
+    '<div class="overflow-x-auto"><table class="w-full text-sm border rounded-lg overflow-hidden">' +
+    '<thead><tr class="bg-gray-50"><th class="text-left px-3 py-2 font-semibold text-gray-600">Field</th><th class="text-left px-3 py-2 font-semibold text-gray-600">Type</th><th class="text-left px-3 py-2 font-semibold text-gray-600">Required</th><th class="text-left px-3 py-2 font-semibold text-gray-600">Description</th></tr></thead><tbody>' +
+    apiField('title', 'string', true, 'Task title') +
+    apiField('description', 'string', false, 'Detailed description') +
+    apiField('status', 'string', false, 'todo, in_progress, review, blocked, done, cancelled. Default: todo') +
+    apiField('priority', 'string', false, 'urgent, high, medium, low. Default: medium') +
+    apiField('due_date', 'string', false, 'ISO datetime, e.g. 2026-03-20T17:00') +
+    apiField('start_date', 'string', false, 'ISO datetime') +
+    apiField('client_id', 'number', false, 'Client ID (see lookup endpoints below)') +
+    apiField('project_id', 'number', false, 'Project ID') +
+    apiField('assignees', 'array', false, 'Array of user IDs [1,2] or [{user_id:1, role:"assignee"}]') +
+    apiField('tags', 'array', false, 'Array of tag strings ["design","urgent"]') +
+    apiField('estimated_hours', 'number', false, 'Estimated hours for the task') +
+    apiField('is_recurring', 'boolean', false, 'true to make recurring') +
+    apiField('recurrence_rule', 'object', false, '{frequency:"weekly", endDate:"2026-12-31"}') +
+    '</tbody></table></div>' +
+
+    // Lookup endpoints
+    '<div class="mt-4 bg-gray-50 rounded-lg p-4 border"><h4 class="font-semibold text-sm text-gray-700 mb-2"><i class="fas fa-search mr-1"></i>Lookup Endpoints</h4>' +
+    '<p class="text-xs text-gray-500 mb-2">Use these to discover IDs for projects, clients, and users:</p>' +
+    '<div class="space-y-1 font-mono text-xs">' +
+    '<div class="flex gap-2"><span class="text-blue-600 font-bold w-10">GET</span><span class="text-gray-700">/api/integration/projects</span><span class="text-gray-400 ml-auto">→ List all projects</span></div>' +
+    '<div class="flex gap-2"><span class="text-blue-600 font-bold w-10">GET</span><span class="text-gray-700">/api/integration/clients</span><span class="text-gray-400 ml-auto">→ List all clients</span></div>' +
+    '<div class="flex gap-2"><span class="text-blue-600 font-bold w-10">GET</span><span class="text-gray-700">/api/integration/users</span><span class="text-gray-400 ml-auto">→ List all users</span></div>' +
+    '</div></div></div>' +
+
+    // Step 3 — Code examples
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">3</span></div><h3 class="font-bold text-gray-800">Code Examples</h3></div>' +
+    '<div class="space-y-4">' +
+
+    // cURL
+    '<div><div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold text-gray-500 uppercase">cURL</span></div>' +
+    '<div class="bg-gray-900 rounded-lg p-4 overflow-x-auto"><pre id="apiExCurl" class="text-sm font-mono text-yellow-400 whitespace-pre"></pre></div></div>' +
+
+    // JavaScript / fetch
+    '<div><div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold text-gray-500 uppercase">JavaScript (fetch)</span></div>' +
+    '<div class="bg-gray-900 rounded-lg p-4 overflow-x-auto"><pre id="apiExJs" class="text-sm font-mono text-blue-400 whitespace-pre"></pre></div></div>' +
+
+    // Python
+    '<div><div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold text-gray-500 uppercase">Python</span></div>' +
+    '<div class="bg-gray-900 rounded-lg p-4 overflow-x-auto"><pre id="apiExPy" class="text-sm font-mono text-green-400 whitespace-pre"></pre></div></div>' +
+
+    // Zapier
+    '<div><div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold text-gray-500 uppercase">Zapier / Make / n8n</span></div>' +
+    '<div class="bg-orange-50 rounded-lg p-4 border border-orange-200 text-sm text-gray-700">' +
+    '<p class="mb-2"><strong>Webhook Setup:</strong></p>' +
+    '<ol class="list-decimal list-inside space-y-1 text-sm">' +
+    '<li>Add a <strong>Webhooks by Zapier</strong> action (POST request)</li>' +
+    '<li>URL: <code id="apiExZapierUrl" class="bg-white px-1 rounded text-xs"></code></li>' +
+    '<li>Headers: <code class="bg-white px-1 rounded text-xs">X-API-Key: your_key</code> and <code class="bg-white px-1 rounded text-xs">Content-Type: application/json</code></li>' +
+    '<li>Body: JSON with <code class="bg-white px-1 rounded text-xs">title</code> mapped from your trigger</li>' +
+    '</ol></div></div></div></div>' +
+
+    // Step 4 — Test it
+    '<div class="bg-white rounded-xl shadow-sm border p-6 mb-4">' +
+    '<div class="flex items-center gap-3 mb-4"><div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center"><span class="text-white font-bold text-sm">4</span></div><h3 class="font-bold text-gray-800">Test It</h3></div>' +
+    '<p class="text-sm text-gray-600 mb-3">Try creating a task right now using your API key:</p>' +
+    '<div class="space-y-3">' +
+    '<input type="text" id="apiTestTitle" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Task title (e.g. Review Q1 report)">' +
+    '<div class="grid grid-cols-2 gap-3">' +
+    '<select id="apiTestPriority" class="text-sm border rounded-lg px-3 py-2"><option value="medium">Medium</option><option value="urgent">Urgent</option><option value="high">High</option><option value="low">Low</option></select>' +
+    '<select id="apiTestProject" class="text-sm border rounded-lg px-3 py-2"><option value="">No Project</option>'+S.projects.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select></div>' +
+    '<button onclick="testApiIntegration()" class="bg-emerald-600 text-white text-sm px-5 py-2.5 rounded-lg hover:bg-emerald-700 transition-colors w-full"><i class="fas fa-paper-plane mr-2"></i>Send Test Request</button>' +
+    '<div id="apiTestResult" class="hidden"></div></div></div>' +
+
+    // Response format
+    '<div class="bg-white rounded-xl shadow-sm border p-6">' +
+    '<h3 class="font-bold text-gray-800 mb-3"><i class="fas fa-reply text-gray-500 mr-2"></i>Response Format</h3>' +
+    '<div class="bg-gray-900 rounded-lg p-4 overflow-x-auto"><pre class="text-sm font-mono text-purple-400 whitespace-pre">' +
+    esc(JSON.stringify({success:true,task:{id:42,title:"Example task",status:"todo",priority:"medium",due_date:"2026-03-20T17:00",project_name:"My Project",client_name:"Acme Corp",assignee_names:"Lisa Park, Mike Chen",tags:["design"],created_at:"2026-03-12T10:00:00Z"}}, null, 2)) +
+    '</pre></div>' +
+    '<div class="mt-3 text-sm text-gray-500"><strong>Error responses</strong> return <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{error: "message"}</code> with appropriate HTTP status codes (400, 401, 403).</div>' +
+    '</div></div>';
+}
+
+function apiField(name, type, required, desc) {
+  return '<tr class="border-t"><td class="px-3 py-2 font-mono text-xs text-emerald-700">'+name+'</td><td class="px-3 py-2 text-xs text-gray-500">'+type+'</td><td class="px-3 py-2 text-xs">'+(required?'<span class="text-red-500 font-semibold">Yes</span>':'<span class="text-gray-400">No</span>')+'</td><td class="px-3 py-2 text-xs text-gray-600">'+desc+'</td></tr>';
+}
+
+async function generateIntegrationKey() {
+  const data = await API.post('/api/email-integration/generate-key');
+  if (data?.api_key) {
+    document.getElementById('integrationKeyValue').textContent = data.api_key;
+    document.getElementById('integrationKeyDisplay').classList.remove('hidden');
+    window._integrationKey = data.api_key;
+    populateApiExamples(data.api_key);
+  }
+}
+
+function copyIntegrationKey() {
+  const keyEl = document.getElementById('integrationKeyValue');
+  if (keyEl && keyEl.textContent) {
+    navigator.clipboard.writeText(keyEl.textContent).then(function() {
+      const btn = document.getElementById('integrationCopyBtn');
+      if (btn) { btn.innerHTML = '<i class="fas fa-check text-green-500 text-lg"></i>'; setTimeout(function(){ btn.innerHTML = '<i class="fas fa-copy text-lg"></i>'; }, 2000); }
+    });
+  }
+}
+
+function populateApiExamples(key) {
+  const base = window.location.origin;
+  const apiKey = key || 'YOUR_API_KEY';
+
+  const curlEl = document.getElementById('apiExCurl');
+  if (curlEl) {
+    const lines = [
+      'curl -X POST ' + base + '/api/tasks/api-add \\\\',
+      '  -H "X-API-Key: ' + apiKey + '" \\\\',
+      '  -H "Content-Type: application/json" \\\\',
+      "  -d '{",
+      '    "title": "Review Q1 report",',
+      '    "priority": "high",',
+      '    "due_date": "2026-03-20T17:00",',
+      '    "assignees": [1, 4],',
+      '    "tags": ["finance", "quarterly"]',
+      "  }'"
+    ];
+    curlEl.textContent = lines.join(String.fromCharCode(10));
+  }
+
+  const jsEl = document.getElementById('apiExJs');
+  if (jsEl) {
+    const jsLines = [
+      'const response = await fetch("' + base + '/api/tasks/api-add", {',
+      '  method: "POST",',
+      '  headers: {',
+      '    "X-API-Key": "' + apiKey + '",',
+      '    "Content-Type": "application/json"',
+      '  },',
+      '  body: JSON.stringify({',
+      '    title: "Review Q1 report",',
+      '    priority: "high",',
+      '    due_date: "2026-03-20T17:00",',
+      '    assignees: [1, 4],',
+      '    tags: ["finance", "quarterly"]',
+      '  })',
+      '});',
+      'const data = await response.json();',
+      'console.log("Created task:", data.task.id);'
+    ];
+    jsEl.textContent = jsLines.join(String.fromCharCode(10));
+  }
+
+  const pyEl = document.getElementById('apiExPy');
+  if (pyEl) {
+    const pyLines = [
+      'import requests',
+      '',
+      'response = requests.post(',
+      '    "' + base + '/api/tasks/api-add",',
+      '    headers={',
+      '        "X-API-Key": "' + apiKey + '",',
+      '        "Content-Type": "application/json"',
+      '    },',
+      '    json={',
+      '        "title": "Review Q1 report",',
+      '        "priority": "high",',
+      '        "due_date": "2026-03-20T17:00",',
+      '        "assignees": [1, 4],',
+      '        "tags": ["finance", "quarterly"]',
+      '    }',
+      ')',
+      'print("Created task:", response.json()["task"]["id"])'
+    ];
+    pyEl.textContent = pyLines.join(String.fromCharCode(10));
+  }
+
+  const zapUrl = document.getElementById('apiExZapierUrl');
+  if (zapUrl) zapUrl.textContent = base + '/api/tasks/api-add';
+}
+
+async function testApiIntegration() {
+  const titleEl = document.getElementById('apiTestTitle');
+  const resultEl = document.getElementById('apiTestResult');
+  if (!titleEl || !titleEl.value.trim()) { alert('Enter a task title'); return; }
+
+  resultEl.classList.remove('hidden');
+  resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-gray-50 text-gray-500';
+  resultEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Sending...';
+
+  try {
+    const res = await API.post('/api/tasks/api-add', {
+      title: titleEl.value.trim(),
+      priority: document.getElementById('apiTestPriority').value,
+      project_id: document.getElementById('apiTestProject').value || null,
+    });
+    if (res?.success) {
+      resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-green-50 text-green-700';
+      resultEl.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Task created! ID: <strong>' + res.task.id + '</strong> — "' + esc(res.task.title) + '"';
+      titleEl.value = '';
+      loadTasks(); loadDashboard(); loadCalendarTasks();
+    } else {
+      resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-red-50 text-red-700';
+      resultEl.innerHTML = '<i class="fas fa-times-circle mr-2"></i>' + (res?.error || 'Unknown error');
+    }
+  } catch(e) {
+    resultEl.className = 'mt-3 text-sm p-3 rounded-lg bg-red-50 text-red-700';
+    resultEl.innerHTML = '<i class="fas fa-times-circle mr-2"></i>Connection error';
+  }
+}
+
 // ==================== EVENT BINDINGS ====================
 function bindEvents() {
   // Populate code blocks on Gmail setup page
@@ -1834,6 +2073,13 @@ function bindEvents() {
   var gasPre = document.getElementById('gasExamplePre');
   if (gasPre) {
     gasPre.textContent = 'function createTaskFromEmail() {\\n  const thread = GmailApp.getInboxThreads(0,1)[0];\\n  const msg = thread.getMessages()[0];\\n  UrlFetchApp.fetch("' + window.location.origin + '/api/tasks/email-add", {\\n    method: "POST",\\n    headers: {\\n      "X-API-Key": "YOUR_KEY",\\n      "Content-Type": "application/json"\\n    },\\n    payload: JSON.stringify({\\n      subject: msg.getSubject(),\\n      body: msg.getPlainBody().substring(0, 500),\\n      from: msg.getFrom()\\n    })\\n  });\\n}';
+  }
+
+  // Populate API Integration page code examples
+  var apiIntEndpoint = document.getElementById('apiIntegrationEndpoint');
+  if (apiIntEndpoint) {
+    apiIntEndpoint.textContent = ['POST ' + window.location.origin + '/api/tasks/api-add', '', 'Headers:', '  X-API-Key: your_api_key_here', '  Content-Type: application/json'].join(String.fromCharCode(10));
+    populateApiExamples(window._integrationKey || null);
   }
 
   const form = document.getElementById('newTaskForm');

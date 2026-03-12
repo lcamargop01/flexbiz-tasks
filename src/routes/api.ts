@@ -634,6 +634,115 @@ apiRoutes.post('/tasks/email-add', async (c) => {
   return c.json({ id: result.meta.last_row_id, title: subject }, 201)
 })
 
+// ==================== EXTERNAL API INTEGRATION ====================
+
+// General-purpose task creation for external applications
+apiRoutes.post('/tasks/api-add', async (c) => {
+  const body = await c.req.json()
+  const {
+    title,
+    description,
+    status = 'todo',
+    priority = 'medium',
+    due_date,
+    start_date,
+    client_id,
+    project_id,
+    tags,
+    assignees,       // array of user IDs or [{user_id, role}]
+    estimated_hours,
+    is_recurring,
+    recurrence_rule,
+  } = body
+
+  if (!title || !title.trim()) {
+    return c.json({ error: 'Title is required' }, 400)
+  }
+
+  const validStatuses = ['todo', 'in_progress', 'review', 'blocked', 'done', 'cancelled']
+  const validPriorities = ['urgent', 'high', 'medium', 'low']
+  if (!validStatuses.includes(status)) return c.json({ error: `Invalid status. Use: ${validStatuses.join(', ')}` }, 400)
+  if (!validPriorities.includes(priority)) return c.json({ error: `Invalid priority. Use: ${validPriorities.join(', ')}` }, 400)
+
+  const tagsJson = tags ? (Array.isArray(tags) ? JSON.stringify(tags) : JSON.stringify(tags.split(',').map((t: string) => t.trim()).filter(Boolean))) : null
+  const recurrenceJson = recurrence_rule ? (typeof recurrence_rule === 'string' ? recurrence_rule : JSON.stringify(recurrence_rule)) : null
+
+  const result = await c.env.DB.prepare(`
+    INSERT INTO tasks (title, description, status, priority, due_date, start_date, client_id, project_id, tags, estimated_hours, is_recurring, recurrence_rule, created_by, created_by_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'api')
+  `).bind(
+    title.trim(),
+    description || null,
+    status,
+    priority,
+    due_date || null,
+    start_date || null,
+    client_id || null,
+    project_id || null,
+    tagsJson,
+    estimated_hours || null,
+    is_recurring ? 1 : 0,
+    recurrenceJson,
+    c.get('entityId')
+  ).run()
+
+  const taskId = result.meta.last_row_id
+
+  // Handle assignees - accept array of IDs or array of {user_id, role}
+  const assigneeList = assignees || []
+  for (const a of assigneeList) {
+    const userId = typeof a === 'number' ? a : (a.user_id || a.id)
+    const role = (typeof a === 'object' && a.role) ? a.role : 'assignee'
+    if (userId) {
+      await c.env.DB.prepare(
+        'INSERT INTO task_assignments (task_id, user_id, role, assigned_by) VALUES (?, ?, ?, ?)'
+      ).bind(taskId, userId, role, c.get('entityId')).run()
+    }
+  }
+
+  // Log activity
+  await c.env.DB.prepare(
+    'INSERT INTO activity_log (task_id, actor_id, actor_type, action, details) VALUES (?, ?, ?, ?, ?)'
+  ).bind(taskId, c.get('entityId'), 'system', 'created', JSON.stringify({ source: 'external_api', title: title.trim() })).run()
+
+  // Fetch created task to return full details
+  const task = await c.env.DB.prepare(`
+    SELECT t.id, t.title, t.status, t.priority, t.due_date, t.start_date, t.client_id, t.project_id, t.tags, t.estimated_hours, t.is_recurring, t.created_at,
+      p.name as project_name, cl.company_name as client_name,
+      (SELECT GROUP_CONCAT(u.name) FROM task_assignments ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = t.id AND ta.role = 'assignee') as assignee_names
+    FROM tasks t
+    LEFT JOIN projects p ON t.project_id = p.id
+    LEFT JOIN clients cl ON t.client_id = cl.id
+    WHERE t.id = ?
+  `).bind(taskId).first()
+
+  return c.json({
+    success: true,
+    task: {
+      ...task,
+      tags: task?.tags ? JSON.parse(task.tags as string) : [],
+    }
+  }, 201)
+})
+
+// List projects (for API consumers to discover IDs)
+apiRoutes.get('/integration/projects', async (c) => {
+  const projects = await c.env.DB.prepare('SELECT id, name, status, color FROM projects ORDER BY name').all()
+  return c.json({ projects: projects.results })
+})
+
+// List clients (for API consumers to discover IDs)
+apiRoutes.get('/integration/clients', async (c) => {
+  const clients = await c.env.DB.prepare('SELECT id, company_name, contact_name FROM clients ORDER BY company_name').all()
+  return c.json({ clients: clients.results })
+})
+
+// List users (for API consumers to discover assignee IDs)
+apiRoutes.get('/integration/users', async (c) => {
+  const users = await c.env.DB.prepare('SELECT id, name, email, role, department FROM users WHERE is_active = 1 ORDER BY name').all()
+  return c.json({ users: users.results })
+})
+
 // ==================== COMMENTS ====================
 
 apiRoutes.post('/tasks/:id/comments', async (c) => {
